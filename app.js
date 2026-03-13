@@ -28,7 +28,7 @@ const TEAMS = [
     league: 'mlb',
     key: 'ATL',
     color: '#CE1141',
-    bg: 'linear-gradient(135deg,#0d0714,#1a0d2e)',
+    bg: 'linear-gradient(135deg,#1a0408,#2d0a0f)',
     logo: 'https://a.espncdn.com/i/teamlogos/mlb/500/atl.png',
     emoji: '⚾',
     type: 'pro',
@@ -599,9 +599,32 @@ async function loadAll() {
   }
 }
 
+// ── Theme Toggle ────────────────────────────────────────────────────────────────
+function initTheme() {
+  const saved = localStorage.getItem('theme');
+  const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  const theme = saved || (prefersDark ? 'dark' : 'light');
+  applyTheme(theme);
+}
+
+function applyTheme(theme) {
+  document.documentElement.setAttribute('data-theme', theme);
+  const btn = document.getElementById('themeToggle');
+  if (btn) btn.textContent = theme === 'dark' ? '🌙' : '☀️';
+  localStorage.setItem('theme', theme);
+}
+
+function toggleTheme() {
+  const current = document.documentElement.getAttribute('data-theme') || 'dark';
+  applyTheme(current === 'dark' ? 'light' : 'dark');
+}
+
 // ── Init ────────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('footerYear').textContent = new Date().getFullYear();
+
+  initTheme();
+  document.getElementById('themeToggle').addEventListener('click', toggleTheme);
 
   buildNavTabs();
 
