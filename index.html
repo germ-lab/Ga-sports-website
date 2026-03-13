@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Georgia Sports Hub</title>
+  <link rel="stylesheet" href="style.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+</head>
+<body>
+
+  <!-- Header -->
+  <header class="site-header">
+    <div class="container header-inner">
+      <div class="brand">
+        <svg class="state-svg" viewBox="0 0 100 100" fill="currentColor" aria-hidden="true">
+          <text y="75" font-size="80" font-family="Georgia, serif">G</text>
+        </svg>
+        <div>
+          <div class="site-title">Georgia Sports Hub</div>
+          <div class="site-sub">Scores &amp; News for Every Georgia Team</div>
+        </div>
+      </div>
+      <div class="header-actions">
+        <span class="last-updated" id="lastUpdated"></span>
+        <button class="btn-refresh" id="refreshBtn" title="Refresh">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
+            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+          </svg>
+          Refresh
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Team Navigation Tabs -->
+  <nav class="team-nav">
+    <div class="container">
+      <div class="nav-tabs" id="navTabs">
+        <button class="nav-tab active" data-team="all">All Teams</button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Main Content -->
+  <main class="main-content">
+    <div class="container" id="mainContainer">
+      <div class="loading-screen" id="loadingScreen">
+        <div class="spinner"></div>
+        <p>Loading Georgia sports data…</p>
+      </div>
+    </div>
+  </main>
+
+  <!-- Footer -->
+  <footer class="site-footer">
+    <div class="container">
+      <p>Data powered by ESPN &bull; Georgia Sports Hub &bull; <span id="footerYear"></span></p>
+    </div>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
