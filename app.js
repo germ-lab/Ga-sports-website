@@ -42,7 +42,7 @@ const TEAMS = [
     league: 'nba',
     key: 'ATL',
     color: '#E03A3E',
-    bg: 'linear-gradient(135deg,#1a0508,#0d1a06)',
+    bg: 'linear-gradient(135deg,#E03A3E,#8B0000)',
     logo: 'https://a.espncdn.com/i/teamlogos/nba/500/atl.png',
     emoji: '🏀',
     type: 'pro',
