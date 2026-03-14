@@ -784,7 +784,7 @@ body {
 .sc-play-score { font-size: .75rem; font-weight: 700; flex-shrink: 0; color: #fff; }
 
 /* ---- Week Calendar Panel ---- */
-.cal-panel { padding: 0; overflow: hidden; }
+.cal-panel { padding: 0; overflow: visible; }
 
 .cal-header {
   display: flex;
@@ -836,9 +836,9 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 8px 2px 12px;
+  padding: 8px 2px 14px;
   border-right: 1px solid var(--border);
-  min-height: 108px;
+  height: 120px;
   gap: 4px;
 }
 .cal-day:last-child { border-right: none; }
