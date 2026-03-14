@@ -68,13 +68,16 @@ body {
   gap: 16px;
   padding-top: 14px;
   padding-bottom: 14px;
+  position: relative;
 }
 
 .brand {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
   display: flex;
   align-items: center;
-  gap: 14px;
-  min-width: 0;
+  pointer-events: none;
 }
 
 .state-svg {
