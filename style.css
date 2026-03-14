@@ -74,6 +74,7 @@ body {
   display: flex;
   align-items: center;
   gap: 14px;
+  min-width: 0;
 }
 
 .state-svg {
@@ -452,11 +453,6 @@ body {
   align-items: start;
 }
 
-@media (max-width: 768px) {
-  .team-view { grid-template-columns: 1fr; }
-  .team-grid { grid-template-columns: 1fr; }
-}
-
 .team-view-hero {
   border-radius: var(--radius);
   padding: 24px;
@@ -820,4 +816,96 @@ body {
   text-align: center;
   font-size: .75rem;
   color: var(--text-muted);
+}
+
+/* ============================================
+   Responsive — Mobile (≤ 768px)
+   ============================================ */
+@media (max-width: 768px) {
+  /* ---- Header ---- */
+  .header-inner {
+    gap: 8px;
+    padding-top: 10px;
+    padding-bottom: 10px;
+  }
+  .brand { gap: 10px; }
+  .state-svg { width: 30px; height: 30px; }
+  .site-title { font-size: 1rem; white-space: nowrap; }
+  .site-sub { display: none; }
+  .header-actions { gap: 6px; }
+  .last-updated { font-size: .62rem; }
+  .btn-refresh { padding: 6px 10px; font-size: .72rem; }
+  .btn-refresh svg { width: 12px; height: 12px; }
+  .btn-theme { width: 32px; height: 32px; font-size: .95rem; }
+
+  /* ---- Nav ---- */
+  .team-nav { top: 52px; }
+  .nav-tabs { gap: 2px; padding: 8px 0; }
+  .nav-tab {
+    padding: 6px 12px;
+    font-size: .75rem;
+    min-height: 36px;
+    display: flex;
+    align-items: center;
+  }
+
+  /* ---- Main content ---- */
+  .main-content { padding: 16px 0 32px; }
+  .container { padding: 0 12px; }
+
+  /* ---- Team grid & cards ---- */
+  .team-grid { grid-template-columns: 1fr; gap: 14px; }
+  .team-card-header { padding: 12px; gap: 10px; }
+  .team-card:hover { transform: none; }
+  .team-logo { width: 36px; height: 36px; }
+  .team-name { font-size: .88rem; }
+  .team-badge { font-size: .6rem; padding: 2px 6px; }
+
+  /* ---- Game panel ---- */
+  .game-panel { padding: 12px; }
+  .game-team-block { min-width: 48px; }
+  .game-team-logo { width: 26px; height: 26px; }
+  .game-team-abbrev { font-size: .65rem; }
+  .score-num { font-size: 1.25rem; }
+
+  /* ---- News panel ---- */
+  .news-panel { padding: 12px; }
+  .news-thumb { width: 44px; height: 32px; }
+  .news-thumb-placeholder { width: 44px; height: 32px; font-size: .9rem; }
+  .news-headline { font-size: .78rem; }
+
+  /* ---- Team view ---- */
+  .team-view { grid-template-columns: 1fr; gap: 16px; }
+  .team-view-hero { padding: 16px; gap: 14px; }
+  .team-view-logo { width: 56px; height: 56px; }
+  .team-view-name { font-size: 1.2rem; }
+  .team-view-record { font-size: .85rem; }
+
+  /* ---- Schedule ---- */
+  .sched-item { padding: 10px 12px; gap: 8px; }
+  .sched-matchup { font-size: .78rem; }
+  .sched-date { font-size: .68rem; }
+  .sched-result { font-size: .78rem; }
+
+  /* ---- Full news ---- */
+  .news-item-full { padding: 12px; gap: 10px; }
+  .news-thumb-full { width: 64px; height: 44px; }
+  .news-thumb-placeholder-full { width: 64px; height: 44px; font-size: 1.2rem; }
+  .news-headline-full { font-size: .8rem; }
+  .news-desc { font-size: .72rem; }
+
+  /* ---- Panel box ---- */
+  .panel-box-header { padding: 12px; font-size: .7rem; }
+
+  /* ---- Groups ---- */
+  .group-block { margin-bottom: 24px; }
+  .section-label { font-size: .65rem; margin-bottom: 10px; }
+}
+
+/* ---- Extra small screens (< 380px) ---- */
+@media (max-width: 380px) {
+  .last-updated { display: none; }
+  .site-title { font-size: .9rem; }
+  .btn-refresh span { display: none; }
+  .team-view-hero { flex-direction: column; text-align: center; }
 }
