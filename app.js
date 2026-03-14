@@ -4,6 +4,47 @@
    ============================================ */
 
 const BASE = 'https://site.api.espn.com/apis/site/v2/sports';
+const STANDINGS_BASE = 'https://site.api.espn.com/apis/v2/sports';
+
+function periodStr(n, sport) {
+  if (!n) return '';
+  if (sport === 'baseball') return ordinal(n);
+  if (sport === 'hockey')   return n > 3 ? 'OT' : `P${n}`;
+  if (sport === 'football') return n > 4 ? 'OT' : `Q${n}`;
+  // basketball default
+  return n > 4 ? `OT${n - 4}` : `Q${n}`;
+}
+
+function ordinal(n) {
+  const s = ['th','st','nd','rd'], v = n % 100;
+  return n + (s[(v-20)%10] || s[v] || s[0]);
+}
+
+function shortConference(name) {
+  return name
+    .replace('American Football Conference', 'AFC')
+    .replace('National Football Conference', 'NFC')
+    .replace('Eastern Conference', 'East')
+    .replace('Western Conference', 'West')
+    .replace('American League', 'AL')
+    .replace('National League', 'NL')
+    .replace(' Conference', '');
+}
+
+async function fetchStanding(team) {
+  try {
+    const data = await apiFetch(`${STANDINGS_BASE}/${team.sport}/${team.league}/standings`);
+    for (const group of data.children || []) {
+      for (const entry of group.standings?.entries || []) {
+        if (entry.team?.abbreviation === team.key) {
+          const seed = entry.stats?.find(s => s.name === 'playoffSeed')?.value;
+          if (seed) return `${ordinal(seed)} in ${shortConference(group.name)}`;
+        }
+      }
+    }
+  } catch {}
+  return '';
+}
 
 const TEAMS = [
   {
@@ -123,28 +164,129 @@ async function loadTeamData(team) {
     const infoData = await apiFetch(`${BASE}/${team.sport}/${team.league}/teams/${team.key}`);
     const espnNumericId = infoData.team?.id;
 
-    // 2. Fetch schedule and news in parallel
-    const [schedData, newsData] = await Promise.allSettled([
+    // 2. Fetch schedule, news, standings, and roster in parallel
+    const [schedData, newsData, standing, rosterData] = await Promise.allSettled([
       apiFetch(`${BASE}/${team.sport}/${team.league}/teams/${team.key}/schedule`),
       apiFetch(`${BASE}/${team.sport}/${team.league}/news?team=${espnNumericId || team.key}&limit=8`),
+      fetchStanding(team),
+      apiFetch(`${BASE}/${team.sport}/${team.league}/teams/${team.key}/roster`),
     ]);
 
     const events = schedData.status === 'fulfilled' ? (schedData.value.events || []) : [];
     const articles = newsData.status === 'fulfilled' ? (newsData.value.articles || []) : [];
+    const roster = rosterData.status === 'fulfilled' ? parseRoster(rosterData.value) : [];
 
     // Parse record — use summary string directly
     const record = infoData.team?.record?.items?.[0]?.summary || '';
+    const games = parseGames(events, team.key);
+
+    // 3. Fetch last game boxscore + upcoming games odds in parallel
+    const upcomingIds = (games.upcomingGames || []).slice(0, 5).map(g => g.id);
+    const liveIds     = (games.live || []).map(g => g.id);
+    const recentGameId = (games.recentGames || [])[0]?.id;
+
+    const summaryFetches = [...new Set([recentGameId, ...liveIds, ...upcomingIds].filter(Boolean))]
+      .map(id => apiFetch(`${BASE}/${team.sport}/${team.league}/summary?event=${id}`)
+        .then(s => ({ id, data: s })).catch(() => null));
+
+    const summaries = (await Promise.all(summaryFetches)).filter(Boolean);
+
+    let lastGameStats = {};
+    let lastGameInfo  = null;
+    const oddsMap     = {};
+    let liveSimcast   = null;
+
+    for (const { id, data } of summaries) {
+      // Boxscore stats for last completed game
+      if (id === recentGameId) {
+        lastGameStats = parseBoxscoreStats(data, team.key);
+        lastGameInfo  = (games.recentGames || [])[0];
+      }
+      // Odds + predictor for upcoming/live games
+      if (upcomingIds.includes(id) || liveIds.includes(id)) {
+        oddsMap[id] = parseGameOdds(data, team.key);
+      }
+      // Full simcast data for live games
+      if (liveIds.includes(id)) {
+        liveSimcast = parseSimcastData(data);
+      }
+    }
 
     return {
       teamInfo: infoData.team,
       record,
-      games: parseGames(events, team.key),
+      standing: standing.status === 'fulfilled' ? standing.value : '',
+      games,
       news: articles,
+      roster,
+      lastGameStats,
+      lastGameInfo,
+      oddsMap,
+      liveSimcast,
     };
   } catch (err) {
     console.warn(`Could not load data for ${team.name}:`, err.message);
-    return { teamInfo: null, record: '', games: {}, news: [] };
+    return { teamInfo: null, record: '', standing: '', games: {}, news: [], roster: [], lastGameStats: {}, lastGameInfo: null, oddsMap: {}, liveSimcast: null };
   }
+}
+
+// ── Roster Helpers ───────────────────────────────────────────────────────────────
+function parseRoster(rosterData) {
+  const raw = rosterData.athletes || [];
+  if (!raw.length) return [];
+  // NFL/NCAAF: grouped by position (each item has an `items` array)
+  if (raw[0]?.items) return raw.flatMap(g => g.items || []);
+  // NBA/NCAAB: flat array
+  return raw;
+}
+
+function parseBoxscoreStats(summaryData, teamKey) {
+  const bsTeams = summaryData?.boxscore?.players || [];
+  const teamData = bsTeams.find(t => t.team?.abbreviation === teamKey);
+  if (!teamData) return {};
+  const result = {};
+  for (const group of teamData.statistics || []) {
+    const labels = group.labels || group.names || [];
+    for (const entry of group.athletes || []) {
+      const id = entry.athlete?.id;
+      const stats = entry.stats || [];
+      if (id && stats.some(s => s && s !== '0' && s !== '0.0' && s !== '--')) {
+        if (!result[id]) result[id] = [];
+        result[id].push({ labels, stats, groupName: group.name });
+      }
+    }
+  }
+  return result;
+}
+
+function parseGameOdds(summaryData, teamKey) {
+  const result = {};
+
+  // Predictor (ESPN win probability model)
+  const pred = summaryData?.predictor;
+  if (pred) {
+    const comps = summaryData?.header?.competitions?.[0]?.competitors || [];
+    const homeComp = comps.find(c => c.homeAway === 'home');
+    const awayComp = comps.find(c => c.homeAway === 'away');
+    const isHome = homeComp?.team?.abbreviation === teamKey;
+    result.ourWinPct  = isHome ? parseFloat(pred.homeTeam?.gameProjection) : parseFloat(pred.awayTeam?.gameProjection);
+    result.oppWinPct  = isHome ? parseFloat(pred.awayTeam?.gameProjection) : parseFloat(pred.homeTeam?.gameProjection);
+  }
+
+  // DraftKings / bookmaker odds
+  const odds = summaryData?.odds?.[0];
+  if (odds) {
+    result.spreadDetails = odds.details || '';       // e.g. "ATL -4.5"
+    result.overUnder     = odds.overUnder ?? null;   // e.g. 225.5
+    const ml = odds.moneyline || {};
+    const comp = summaryData?.header?.competitions?.[0]?.competitors || [];
+    const homeAbbrev = comp.find(c => c.homeAway === 'home')?.team?.abbreviation;
+    const isHome = homeAbbrev === teamKey;
+    result.ourML  = isHome ? ml.home?.close?.odds : ml.away?.close?.odds;
+    result.oppML  = isHome ? ml.away?.close?.odds : ml.home?.close?.odds;
+  }
+
+  return Object.keys(result).length ? result : null;
 }
 
 function parseGames(events, teamKey) {
@@ -280,7 +422,7 @@ function logoImg(url, cls, fallback) {
   return `<img class="${cls}" src="${url}" alt="" loading="lazy" onerror="this.style.display='none'">`;
 }
 
-function renderScorePanel(games, team) {
+function renderScorePanel(games, team, liveSimcast) {
   const live = games.live || [];
   const lastGame = games.lastGame || null;
   const nextGame = games.nextGame || null;
@@ -292,7 +434,7 @@ function renderScorePanel(games, team) {
     const state = game.state;
     let statusEl = '';
     if (state === 'in') {
-      const periodLabel = game.period ? `Q${game.period}` : '';
+      const periodLabel = game.period ? periodStr(game.period, team.sport) : '';
       statusEl = `<div class="game-status status-live"><span class="live-dot"></span>${periodLabel} ${game.clock}</div>`;
     } else {
       statusEl = `<div class="game-status status-final">${game.statusText}</div>`;
@@ -302,6 +444,10 @@ function renderScorePanel(games, team) {
     const homeWin = game.home.winner;
     const awayScoreCls = state === 'post' ? (awayWin ? 'winner' : 'loser') : '';
     const homeScoreCls = state === 'post' ? (homeWin ? 'winner' : 'loser') : '';
+
+    // Use fresh scores from simcast for live games
+    const awayScore = (state === 'in' && liveSimcast) ? (liveSimcast.away?.score ?? game.away.score) : game.away.score;
+    const homeScore = (state === 'in' && liveSimcast) ? (liveSimcast.home?.score ?? game.home.score) : game.home.score;
 
     parts.push(`
       <div class="game-panel">
@@ -313,9 +459,9 @@ function renderScorePanel(games, team) {
           </div>
           <div class="game-scores">
             <div class="score-line">
-              <span class="score-num ${awayScoreCls}">${game.away.score}</span>
+              <span class="score-num ${awayScoreCls}">${awayScore}</span>
               <span class="score-separator">–</span>
-              <span class="score-num ${homeScoreCls}">${game.home.score}</span>
+              <span class="score-num ${homeScoreCls}">${homeScore}</span>
             </div>
             ${statusEl}
             <div class="game-date">${fmtDate(game.date)}${game.tv ? ` · ${game.tv}` : ''}</div>
@@ -325,6 +471,43 @@ function renderScorePanel(games, team) {
             <span class="game-team-abbrev">${game.home.abbrev || ''}</span>
           </div>
         </div>
+      </div>
+    `);
+  }
+
+  // Live simcast plays panel (dashboard card)
+  if (live.length && liveSimcast?.recent?.length) {
+    const { recent, teamStats } = liveSimcast;
+
+    const statsHtml = teamStats.length ? `
+      <div class="sc-stats" style="border-top:1px solid var(--border);padding:8px 14px;">
+        ${teamStats.map(t => `
+          <div class="sc-stat-row">
+            <span class="sc-stat-team">${t.abbrev}</span>
+            ${t.fg ? `<span class="sc-stat">FG ${t.fg}%</span>` : ''}
+            ${t.reb ? `<span class="sc-stat">REB ${t.reb}</span>` : ''}
+            ${t.to ? `<span class="sc-stat">TO ${t.to}</span>` : ''}
+          </div>`).join('')}
+      </div>` : '';
+
+    const playsHtml = recent.slice(0, 5).map(p => {
+      const perBase = p.period?.number ? periodStr(p.period.number, team.sport) : '';
+      const perHalf = (team.sport === 'baseball' && p.period?.type) ? `${p.period.type} ` : '';
+      const per = perHalf + perBase;
+      const clk = team.sport === 'baseball' ? '' : (p.clock?.displayValue || '');
+      return `
+        <div class="sc-play ${p.scoringPlay ? 'sc-play-scoring' : ''}">
+          <span class="sc-play-time">${per} ${clk}</span>
+          <span class="sc-play-text">${escHtml(p.text)}</span>
+          ${p.scoringPlay ? `<span class="sc-play-score">${p.awayScore}–${p.homeScore}</span>` : ''}
+        </div>`;
+    }).join('');
+
+    parts.push(`
+      <div class="card-simcast">
+        ${statsHtml}
+        <div class="sc-plays-header" style="padding:6px 14px 4px">Recent Plays</div>
+        <div class="sc-plays" style="max-height:180px">${playsHtml}</div>
       </div>
     `);
   }
@@ -405,10 +588,8 @@ function renderTeamCard(team) {
   const data = allData[team.id] || {};
   const games = data.games || {};
   const news = data.news || [];
-  const record = data.record ? `<span style="color:var(--text-muted)">${data.record}</span>` : '';
-
-  const badgeStyle = `background:${team.color}22;color:${team.color};`;
-  const badgeLabel = team.type === 'college' ? 'NCAA' : 'PRO';
+  const record = data.record ? `<span class="team-record">${data.record}</span>` : '';
+  const liveSimcast = data.liveSimcast || null;
 
   return `
     <div class="team-card" id="card-${team.id}">
@@ -416,14 +597,108 @@ function renderTeamCard(team) {
         ${logoImg(team.logo, 'team-logo', team.emoji)}
         <div class="team-meta">
           <div class="team-name">${team.name}</div>
-          <div class="team-record">${record || '&nbsp;'}</div>
         </div>
-        <span class="team-badge" style="${badgeStyle}">${badgeLabel}</span>
+        ${record}
       </div>
-      ${renderScorePanel(games, team)}
+      ${renderScorePanel(games, team, liveSimcast)}
       ${renderNewsPanel(news, 3)}
     </div>
   `;
+}
+
+// ── Roster Panel ────────────────────────────────────────────────────────────────
+const KEY_STATS = {
+  basketball: ['PTS', 'REB', 'AST', 'STL'],
+  football:   null, // use first 4 cols of each position group
+  baseball:   ['AB', 'H', 'HR', 'RBI'],
+  hockey:     ['G', 'A', 'PTS', '+/-'],
+};
+
+function renderRosterPanel(team, data) {
+  const { roster = [], lastGameStats = {}, lastGameInfo = null } = data;
+  if (!roster.length) return '';
+
+  const gameLabel = lastGameInfo
+    ? `Last game vs ${lastGameInfo.opp?.name?.split(' ').pop() || lastGameInfo.opp?.name}`
+    : '';
+
+  const cards = roster.map(athlete => {
+    const name    = athlete.displayName || athlete.fullName || '';
+    const jersey  = athlete.jersey || '';
+    const pos     = athlete.position?.abbreviation || '';
+    const ht      = athlete.displayHeight || '';
+    const wt      = athlete.displayWeight || '';
+    const exp     = athlete.experience?.years;
+    const college = athlete.college?.name || '';
+    const img     = athlete.headshot?.href || '';
+    const espnUrl = athlete.links?.find(l => l.rel?.includes('playercard'))?.href || '#';
+    const id      = athlete.id;
+
+    const groups = lastGameStats[id] || [];
+    let statsHtml = '';
+    if (groups.length) {
+      const preferred = KEY_STATS[team.sport];
+      const { labels, stats } = groups[0];
+      const cols = preferred
+        ? preferred.filter(c => labels.includes(c))
+        : labels.slice(0, 4);
+      const pairs = cols.map(col => {
+        const idx = labels.indexOf(col);
+        const val = idx >= 0 ? stats[idx] : null;
+        return val && val !== '--' && val !== '0' && val !== '0.0'
+          ? `<div class="rp-stat"><div class="rp-stat-val">${escHtml(val)}</div><div class="rp-stat-lbl">${col}</div></div>`
+          : '';
+      }).filter(Boolean);
+
+      // For football, also check other groups (QB might have rushing too)
+      if (team.sport === 'football' && groups.length > 1) {
+        for (let i = 1; i < groups.length; i++) {
+          const g = groups[i];
+          g.labels.slice(0, 3).forEach((col, ci) => {
+            const val = g.stats[ci];
+            if (val && val !== '--' && val !== '0') {
+              pairs.push(`<div class="rp-stat"><div class="rp-stat-val">${escHtml(val)}</div><div class="rp-stat-lbl">${col}</div></div>`);
+            }
+          });
+        }
+      }
+
+      if (pairs.length) {
+        const groupLabel = groups.length > 1 ? '' : (groups[0].groupName ? `<span class="rp-group">${groups[0].groupName}</span>` : '');
+        statsHtml = `<div class="rp-stats">${groupLabel}${pairs.join('')}</div>`;
+      }
+    }
+
+    const metaParts = [pos, ht, wt].filter(Boolean);
+    const expStr = exp != null ? (exp === 0 ? 'Rookie' : `${exp}yr`) : '';
+
+    return `
+      <a class="rp-card" href="${espnUrl}" target="_blank" rel="noopener noreferrer" style="--team-color:${team.color}">
+        <div class="rp-photo-wrap">
+          ${img
+            ? `<img class="rp-photo" src="${escHtml(img)}" alt="${escHtml(name)}" loading="lazy" onerror="this.style.display='none'">`
+            : `<div class="rp-photo-placeholder">${jersey || '?'}</div>`}
+          ${jersey ? `<span class="rp-jersey">#${jersey}</span>` : ''}
+        </div>
+        <div class="rp-body">
+          <div class="rp-name">${escHtml(name)}</div>
+          <div class="rp-meta">${escHtml(metaParts.join(' · '))}${expStr ? ` · ${expStr}` : ''}${college ? ` · ${escHtml(college)}` : ''}</div>
+          ${statsHtml}
+        </div>
+      </a>`;
+  }).join('');
+
+  return `
+    <div class="panel-box rp-panel">
+      <div class="panel-box-header rp-toggle" style="color:${team.color}" onclick="this.closest('.rp-panel').classList.toggle('rp-open')" role="button" tabindex="0">
+        Roster & Stats
+        ${gameLabel ? `<span class="rp-game-label">${escHtml(gameLabel)}</span>` : ''}
+        <span class="rp-chevron">▾</span>
+      </div>
+      <div class="rp-body-wrap">
+        <div class="rp-grid">${cards}</div>
+      </div>
+    </div>`;
 }
 
 // ── Single Team View ────────────────────────────────────────────────────────────
@@ -432,15 +707,15 @@ function renderTeamView(team) {
   const games = data.games || {};
   const news = data.news || [];
   const record = data.record || '';
+  const standing = data.standing || '';
+  const oddsMap = data.oddsMap || {};
 
   // Hero
   const heroHtml = `
     <div class="team-view-hero" style="background:${team.bg};border:1px solid ${team.color}44">
       ${logoImg(team.logo, 'team-view-logo', team.emoji)}
-      <div>
-        <div class="team-view-name">${team.name}</div>
-        <div class="team-view-record" style="color:${team.color}">${record || 'Season in progress'}</div>
-      </div>
+      <div class="team-view-name">${team.name}</div>
+      ${record ? `<div class="team-view-record">${record}${standing ? `<div class="team-view-standing">${standing}</div>` : ''}</div>` : ''}
     </div>
   `;
 
@@ -462,23 +737,47 @@ function renderTeamView(team) {
       ...(games.recentGames || []),
     ];
     schedHtml = ordered.map(g => {
+      const odds = oddsMap[g.id];
       let resultHtml = '';
+      let oddsHtml = '';
+
       if (g.state === 'in') {
-        const per = g.period ? `Q${g.period}` : '';
+        const per = g.period ? periodStr(g.period, team.sport) : '';
         resultHtml = `<div class="sched-result"><span class="live-dot"></span>${per} ${g.clock}</div>`;
       } else if (g.state === 'post' && g.result) {
         const cls = g.result === 'W' ? 'win' : g.result === 'L' ? 'loss' : '';
         const score = `${g.our.score}–${g.opp.score}`;
         resultHtml = `<div class="sched-result"><span class="${cls}">${g.result} ${score}</span></div>`;
       } else {
-        resultHtml = `<div class="sched-result"><span class="upcoming">${g.date.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'})}</span></div>`;
+        const timeStr = g.date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+        let winProbHtml = '';
+        if (odds?.ourWinPct != null && !isNaN(odds.ourWinPct)) {
+          const pct = Math.round(odds.ourWinPct);
+          const barW = Math.max(5, Math.min(95, pct));
+          winProbHtml = `
+            <div class="odds-prob-bar" title="${team.short} win probability: ${pct}%">
+              <div class="odds-prob-fill" style="width:${barW}%;background:${team.color}"></div>
+            </div>
+            <div class="odds-prob-label">${team.short} <b>${pct}%</b></div>`;
+        }
+        resultHtml = `<div class="sched-result sched-result-pre"><span class="upcoming">${timeStr}</span>${winProbHtml}</div>`;
+
+        // Spread + OU row
+        if (odds?.spreadDetails || odds?.overUnder != null) {
+          const parts = [];
+          if (odds.spreadDetails) parts.push(`<span class="odds-chip">${escHtml(odds.spreadDetails)}</span>`);
+          if (odds.overUnder != null) parts.push(`<span class="odds-chip">O/U ${odds.overUnder}</span>`);
+          if (odds.ourML) parts.push(`<span class="odds-chip">ML ${escHtml(odds.ourML)}</span>`);
+          oddsHtml = `<div class="odds-row"><span class="odds-src">DraftKings</span>${parts.join('')}</div>`;
+        }
       }
 
       return `
         <div class="sched-item">
-          <div>
+          <div class="sched-main">
             <div class="sched-matchup">${escHtml(g.name || `${g.away.abbrev} @ ${g.home.abbrev}`)}</div>
             <div class="sched-date">${fmtDate(g.date)}${g.tv ? ` · ${g.tv}` : ''}${g.venue ? ` · ${escHtml(g.venue)}` : ''}</div>
+            ${oddsHtml}
           </div>
           ${resultHtml}
         </div>
@@ -510,19 +809,149 @@ function renderTeamView(team) {
     }).join('');
   }
 
+  const liveGame = (games.live || [])[0];
+  const simcastPlaceholder = liveGame
+    ? `<div id="simcast-panel" class="panel-box sc-panel"><div class="sc-loading">Loading live game…</div></div>`
+    : '';
+
+  // Clear any previous simcast interval
+  if (simcastInterval) { clearInterval(simcastInterval); simcastInterval = null; }
+
+  const rosterHtml = renderRosterPanel(team, data);
+
   document.getElementById('mainContainer').innerHTML = `
     ${heroHtml}
     <div class="team-view">
+      ${simcastPlaceholder}
       <div class="panel-box">
         <div class="panel-box-header" style="color:${team.color}">Schedule & Scores</div>
         <div class="schedule-list">${schedHtml}</div>
       </div>
+      ${rosterHtml}
       <div class="panel-box">
         <div class="panel-box-header" style="color:${team.color}">Latest News</div>
         <div class="news-list-full">${newsHtml}</div>
       </div>
     </div>
   `;
+
+  if (liveGame) {
+    loadSimcast(liveGame.id, team.sport, team.league, team);
+    simcastInterval = setInterval(() => loadSimcast(liveGame.id, team.sport, team.league, team), 30_000);
+  }
+}
+
+// ── Simcast ─────────────────────────────────────────────────────────────────────
+let simcastInterval = null;
+
+function parseSimcastData(data) {
+  const comp = data.header?.competitions?.[0] || {};
+  const competitors = comp.competitors || [];
+  const away = competitors.find(c => c.homeAway === 'away') || competitors[0] || {};
+  const home = competitors.find(c => c.homeAway === 'home') || competitors[1] || {};
+  const status = comp.status || {};
+
+  const plays = (data.plays || []).filter(p => p.text && !p.type?.text?.startsWith('End'));
+  const recent = plays.slice(-10).reverse();
+
+  const bsTeams = data.boxscore?.teams || [];
+  const teamStats = bsTeams.map(t => {
+    const s = Object.fromEntries((t.statistics || []).map(x => [x.name, x.displayValue]));
+    return { abbrev: t.team?.abbreviation, fg: s.fieldGoalPct, reb: s.rebounds, to: s.turnovers, pts: s.points };
+  });
+
+  return { away, home, status, recent, teamStats };
+}
+
+async function fetchSimcast(gameId, sport, league) {
+  const data = await apiFetch(`${BASE}/${sport}/${league}/summary?event=${gameId}`);
+  return parseSimcastData(data);
+}
+
+function renderSimcast(data, team) {
+  const { away, home, status, recent, teamStats } = data;
+  const period = status.period || 0;
+  const clock = status.displayClock || '';
+  const desc = status.type?.description || '';
+  const isHalftime = desc.toLowerCase().includes('half');
+  const halfInning = status.periodPrefix || '';  // "Top" or "Bot" for baseball
+
+  const teamLogo = (t) => t.team?.logos?.[0]?.href || t.team?.logo || '';
+  const abbrev = (t) => t.team?.abbreviation || '';
+
+  const scoreHtml = (t, side) => `
+    <div class="sc-team">
+      <img src="${teamLogo(t)}" class="sc-logo" alt="${abbrev(t)}" onerror="this.style.display='none'">
+      <div class="sc-abbrev">${abbrev(t)}</div>
+      <div class="sc-score ${side === 'home' ? 'sc-home' : 'sc-away'}">${t.score ?? '-'}</div>
+    </div>`;
+
+  const basePeriod = isHalftime ? 'Halftime' : period ? periodStr(period, team.sport) : '';
+  const periodLabel = (team.sport === 'baseball' && halfInning)
+    ? `${halfInning} ${basePeriod}` : basePeriod;
+
+  const statsHtml = teamStats.length ? `
+    <div class="sc-stats">
+      ${teamStats.map(t => `
+        <div class="sc-stat-row">
+          <span class="sc-stat-team">${t.abbrev}</span>
+          ${t.fg ? `<span class="sc-stat">FG ${t.fg}%</span>` : ''}
+          ${t.reb ? `<span class="sc-stat">REB ${t.reb}</span>` : ''}
+          ${t.to ? `<span class="sc-stat">TO ${t.to}</span>` : ''}
+        </div>`).join('')}
+    </div>` : '';
+
+  const playsHtml = recent.length ? recent.map(p => {
+    const perBase = p.period?.number ? periodStr(p.period.number, team.sport) : '';
+    const perHalf = (team.sport === 'baseball' && p.period?.type) ? `${p.period.type} ` : '';
+    const per = perHalf + perBase;
+    const clk = team.sport === 'baseball' ? '' : (p.clock?.displayValue || '');
+    const scoring = p.scoringPlay;
+    return `
+      <div class="sc-play ${scoring ? 'sc-play-scoring' : ''}">
+        <span class="sc-play-time">${per} ${clk}</span>
+        <span class="sc-play-text">${escHtml(p.text)}</span>
+        ${scoring ? `<span class="sc-play-score">${p.awayScore}–${p.homeScore}</span>` : ''}
+      </div>`;
+  }).join('') : '<div class="sc-play">No plays yet</div>';
+
+  return `
+    <div class="panel-box sc-panel">
+      <div class="panel-box-header" style="color:${team.color}">
+        <span class="live-dot"></span> Live Simcast
+      </div>
+      <div class="sc-scoreboard">
+        ${scoreHtml(away, 'away')}
+        <div class="sc-middle">
+          <div class="sc-period">${periodLabel}</div>
+          <div class="sc-clock">${isHalftime || team.sport === 'baseball' ? '' : clock}</div>
+        </div>
+        ${scoreHtml(home, 'home')}
+      </div>
+      ${statsHtml}
+      <div class="sc-plays-header">Recent Plays</div>
+      <div class="sc-plays">${playsHtml}</div>
+    </div>`;
+}
+
+async function refreshSimcast(gameId, sport, league, team) {
+  const el = document.getElementById('simcast-panel');
+  if (!el) { clearInterval(simcastInterval); simcastInterval = null; return; }
+  try {
+    const data = await fetchSimcast(gameId, sport, league);
+    el.outerHTML = renderSimcast(data, team);  // re-inject by ID won't work after outerHTML; use innerHTML approach
+  } catch {}
+}
+
+async function loadSimcast(gameId, sport, league, team) {
+  const el = document.getElementById('simcast-panel');
+  if (!el) return;
+  try {
+    const data = await fetchSimcast(gameId, sport, league);
+    el.outerHTML = renderSimcast(data, team);
+  } catch (err) {
+    if (el) el.innerHTML = '<div class="error-state">Simcast unavailable</div>';
+  }
 }
 
 // ── Navigation ──────────────────────────────────────────────────────────────────
@@ -545,6 +974,7 @@ function buildNavTabs() {
 }
 
 function switchTeam(teamId) {
+  if (simcastInterval) { clearInterval(simcastInterval); simcastInterval = null; }
   activeTeam = teamId;
 
   // Update active tab
