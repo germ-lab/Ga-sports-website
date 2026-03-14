@@ -150,6 +150,7 @@ const TEAMS = [
 // ── State ──────────────────────────────────────────────────────────────────────
 let allData = {};       // { [teamId]: { teamInfo, games, news } }
 let activeTeam = 'all';
+let schedWeekOffset = 0; // 0 = current week, -1 = last week, +1 = next week
 
 // ── API Helpers ────────────────────────────────────────────────────────────────
 async function apiFetch(url) {
@@ -742,72 +743,6 @@ function renderTeamView(team) {
     </div>
   `;
 
-  // Schedule
-  const allGames = [
-    ...(games.live || []),
-    ...(games.recentGames || []),
-    ...(games.upcomingGames || []),
-  ];
-
-  let schedHtml = '';
-  if (allGames.length === 0) {
-    schedHtml = `<div class="error-state">No schedule data available.</div>`;
-  } else {
-    // Show live first, then upcoming, then recent
-    const ordered = [
-      ...(games.live || []),
-      ...(games.upcomingGames || []),
-      ...(games.recentGames || []),
-    ];
-    schedHtml = ordered.map(g => {
-      const odds = oddsMap[g.id];
-      let resultHtml = '';
-      let oddsHtml = '';
-
-      if (g.state === 'in') {
-        const per = g.period ? periodStr(g.period, team.sport) : '';
-        resultHtml = `<div class="sched-result"><span class="live-dot"></span>${per} ${g.clock}</div>`;
-      } else if (g.state === 'post' && g.result) {
-        const cls = g.result === 'W' ? 'win' : g.result === 'L' ? 'loss' : '';
-        const score = `${g.our.score}–${g.opp.score}`;
-        resultHtml = `<div class="sched-result"><span class="${cls}">${g.result} ${score}</span></div>`;
-      } else {
-        const timeStr = g.date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-        let winProbHtml = '';
-        if (odds?.ourWinPct != null && !isNaN(odds.ourWinPct)) {
-          const pct = Math.round(odds.ourWinPct);
-          const barW = Math.max(5, Math.min(95, pct));
-          winProbHtml = `
-            <div class="odds-prob-bar" title="${team.short} win probability: ${pct}%">
-              <div class="odds-prob-fill" style="width:${barW}%;background:${team.color}"></div>
-            </div>
-            <div class="odds-prob-label">${team.short} <b>${pct}%</b></div>`;
-        }
-        resultHtml = `<div class="sched-result sched-result-pre"><span class="upcoming">${timeStr}</span>${winProbHtml}</div>`;
-
-        // Spread + OU row
-        if (odds?.spreadDetails || odds?.overUnder != null) {
-          const parts = [];
-          if (odds.spreadDetails) parts.push(`<span class="odds-chip">${escHtml(odds.spreadDetails)}</span>`);
-          if (odds.overUnder != null) parts.push(`<span class="odds-chip">O/U ${odds.overUnder}</span>`);
-          if (odds.ourML) parts.push(`<span class="odds-chip">ML ${escHtml(odds.ourML)}</span>`);
-          oddsHtml = `<div class="odds-row"><span class="odds-src">DraftKings</span>${parts.join('')}</div>`;
-        }
-      }
-
-      return `
-        <div class="sched-item" onclick="openMatchupModal('${g.id}','${team.id}')" role="button" tabindex="0">
-          <div class="sched-main">
-            <div class="sched-matchup">${escHtml(g.name || `${g.away.abbrev} @ ${g.home.abbrev}`)}</div>
-            <div class="sched-date">${fmtDate(g.date)}${g.tv ? ` · ${g.tv}` : ''}${g.venue ? ` · ${escHtml(g.venue)}` : ''}</div>
-            ${oddsHtml}
-          </div>
-          ${resultHtml}
-        </div>
-      `;
-    }).join('');
-  }
-
   // News
   let newsHtml = '';
   if (!news.length) {
@@ -846,15 +781,7 @@ function renderTeamView(team) {
     ${heroHtml}
     <div class="team-view">
       ${simcastPlaceholder}
-      <div class="panel-box sched-panel sched-open">
-        <div class="panel-box-header sched-toggle" style="color:${team.color}" onclick="this.closest('.sched-panel').classList.toggle('sched-open')" role="button" tabindex="0">
-          Schedule & Scores
-          <span class="sched-chevron">▾</span>
-        </div>
-        <div class="sched-body-wrap">
-          <div class="schedule-list">${schedHtml}</div>
-        </div>
-      </div>
+      ${renderScheduleCalendar(team, games, oddsMap)}
       ${rosterHtml}
       <div class="panel-box">
         <div class="panel-box-header" style="color:${team.color}">Latest News</div>
@@ -979,6 +906,101 @@ async function loadSimcast(gameId, sport, league, team) {
     el.outerHTML = renderSimcast(data, team);
   } catch (err) {
     if (el) el.innerHTML = '<div class="error-state">Simcast unavailable</div>';
+  }
+}
+
+// ── Week Calendar ────────────────────────────────────────────────────────────────
+function getWeekDays(offset) {
+  const today = new Date();
+  const dayOfWeek = today.getDay(); // 0=Sun, 6=Sat
+  const sunday = new Date(today);
+  sunday.setDate(today.getDate() - dayOfWeek + offset * 7);
+  sunday.setHours(0, 0, 0, 0);
+  return Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(sunday);
+    d.setDate(sunday.getDate() + i);
+    return d;
+  });
+}
+
+function renderScheduleCalendar(team, games, oddsMap) {
+  const allGames = [
+    ...(games.live || []),
+    ...(games.recentGames || []),
+    ...(games.upcomingGames || []),
+  ];
+
+  const days = getWeekDays(schedWeekOffset);
+  const weekLabel = `${fmtDate(days[0])} – ${fmtDate(days[6])}`;
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const dayCards = days.map(day => {
+    const dayStart = new Date(day); dayStart.setHours(0, 0, 0, 0);
+    const dayEnd   = new Date(day); dayEnd.setHours(23, 59, 59, 999);
+    const isToday  = dayStart.getTime() === today.getTime();
+
+    const game = allGames.find(g => g.date >= dayStart && g.date <= dayEnd);
+    const dayName = day.toLocaleDateString('en-US', { weekday: 'short' });
+    const dayNum  = day.getDate();
+
+    let gameContent = '<div class="cal-no-game">·</div>';
+    if (game) {
+      const oppLogo   = game.isHome ? game.away.logo : game.home.logo;
+      const oppAbbrev = game.isHome ? game.away.abbrev : game.home.abbrev;
+      const atVs      = game.isHome ? 'vs' : '@';
+
+      let resultEl = '';
+      if (game.state === 'in') {
+        const per = game.period ? periodStr(game.period, team.sport) : '';
+        resultEl = `<div class="cal-game-live"><span class="live-dot"></span>${game.our.score}–${game.opp.score}</div>`;
+      } else if (game.state === 'post' && game.result) {
+        const cls = game.result === 'W' ? 'win' : 'loss';
+        resultEl = `<div class="cal-game-result ${cls}">${game.result} ${game.our.score}–${game.opp.score}</div>`;
+      } else {
+        const timeStr = game.date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+        resultEl = `<div class="cal-game-time">${timeStr}</div>`;
+      }
+
+      gameContent = `
+        <div class="cal-game" onclick="openMatchupModal('${game.id}','${team.id}')" role="button" tabindex="0">
+          <img class="cal-opp-logo" src="${escHtml(oppLogo)}" alt="${escHtml(oppAbbrev)}" onerror="this.style.display='none'">
+          <div class="cal-opp-abbrev">${atVs} ${escHtml(oppAbbrev)}</div>
+          ${resultEl}
+        </div>`;
+    }
+
+    return `
+      <div class="cal-day${isToday ? ' cal-today' : ''}${game ? ' cal-has-game' : ''}">
+        <div class="cal-day-name">${dayName}</div>
+        <div class="cal-day-num" style="${isToday ? `background:${team.color};color:#fff` : ''}">${dayNum}</div>
+        ${gameContent}
+      </div>`;
+  }).join('');
+
+  return `
+    <div class="panel-box cal-panel">
+      <div class="cal-header">
+        <button class="cal-nav-btn" onclick="navigateSchedWeek('${team.id}',-1)" aria-label="Previous week">&#8249;</button>
+        <div class="cal-header-center">
+          <span class="cal-title" style="color:${team.color}">Schedule &amp; Scores</span>
+          <span class="cal-week-label">${weekLabel}</span>
+        </div>
+        <button class="cal-nav-btn" onclick="navigateSchedWeek('${team.id}',1)" aria-label="Next week">&#8250;</button>
+      </div>
+      <div class="cal-days">${dayCards}</div>
+    </div>`;
+}
+
+function navigateSchedWeek(teamId, direction) {
+  schedWeekOffset += direction;
+  const team = TEAMS.find(t => t.id === teamId);
+  if (!team) return;
+  const data = allData[teamId] || {};
+  const calPanel = document.querySelector('.cal-panel');
+  if (calPanel) {
+    calPanel.outerHTML = renderScheduleCalendar(team, data.games || {}, data.oddsMap || {});
   }
 }
 
@@ -1166,6 +1188,7 @@ function buildNavTabs() {
 
 function switchTeam(teamId) {
   if (simcastInterval) { clearInterval(simcastInterval); simcastInterval = null; }
+  schedWeekOffset = 0;
   activeTeam = teamId;
 
   // Update active link
