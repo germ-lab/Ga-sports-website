@@ -783,6 +783,25 @@ body {
 .sc-play-text { flex: 1; color: var(--text-secondary); line-height: 1.3; }
 .sc-play-score { font-size: .75rem; font-weight: 700; flex-shrink: 0; color: #fff; }
 
+/* ---- Schedule Dropdown ---- */
+.sched-panel .panel-box-header {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  user-select: none;
+}
+.sched-toggle:hover { opacity: .85; }
+.sched-chevron { margin-left: auto; font-size: .85rem; transition: transform .2s; color: var(--text-muted); }
+.sched-panel.sched-open .sched-chevron { transform: rotate(180deg); }
+
+.sched-body-wrap {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows .25s ease;
+}
+.sched-panel.sched-open .sched-body-wrap { grid-template-rows: 1fr; }
+.sched-body-wrap > .schedule-list { overflow: hidden; }
+
 /* ---- Roster Panel ---- */
 .rp-panel .panel-box-header {
   display: flex;

@@ -846,9 +846,14 @@ function renderTeamView(team) {
     ${heroHtml}
     <div class="team-view">
       ${simcastPlaceholder}
-      <div class="panel-box">
-        <div class="panel-box-header" style="color:${team.color}">Schedule & Scores</div>
-        <div class="schedule-list">${schedHtml}</div>
+      <div class="panel-box sched-panel sched-open">
+        <div class="panel-box-header sched-toggle" style="color:${team.color}" onclick="this.closest('.sched-panel').classList.toggle('sched-open')" role="button" tabindex="0">
+          Schedule & Scores
+          <span class="sched-chevron">▾</span>
+        </div>
+        <div class="sched-body-wrap">
+          <div class="schedule-list">${schedHtml}</div>
+        </div>
       </div>
       ${rosterHtml}
       <div class="panel-box">
