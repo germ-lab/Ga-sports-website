@@ -884,8 +884,15 @@ function renderSimcast(data, team) {
         ${scoreHtml(home, 'home')}
       </div>
       ${statsHtml}
-      <div class="sc-plays-header">Recent Plays</div>
-      <div class="sc-plays">${playsHtml}</div>
+      <div class="sc-plays-panel sc-plays-open">
+        <div class="sc-plays-header sc-plays-toggle" onclick="this.closest('.sc-plays-panel').classList.toggle('sc-plays-open')" role="button" tabindex="0">
+          Recent Plays
+          <span class="sc-plays-chevron">▾</span>
+        </div>
+        <div class="sc-plays-wrap">
+          <div class="sc-plays">${playsHtml}</div>
+        </div>
+      </div>
     </div>`;
 }
 

@@ -759,15 +759,37 @@ body {
 .sc-stat-team { font-size: .75rem; font-weight: 700; color: var(--text-muted); min-width: 28px; }
 .sc-stat { font-size: .75rem; color: var(--text-secondary); background: var(--surface2); padding: 2px 6px; border-radius: 4px; }
 
+.sc-plays-panel { border-top: 1px solid var(--border); }
 .sc-plays-header {
+  display: flex;
+  align-items: center;
   font-size: .7rem;
   font-weight: 700;
   letter-spacing: .8px;
   text-transform: uppercase;
   color: var(--text-muted);
-  padding: 10px 16px 6px;
-  border-top: 1px solid var(--border);
+  padding: 10px 16px 8px;
 }
+.sc-plays-toggle {
+  cursor: pointer;
+  user-select: none;
+}
+.sc-plays-toggle:hover { opacity: .8; }
+.sc-plays-chevron {
+  margin-left: auto;
+  font-size: .85rem;
+  transition: transform .2s;
+}
+.sc-plays-panel.sc-plays-open .sc-plays-chevron { transform: rotate(180deg); }
+
+.sc-plays-wrap {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows .25s ease;
+}
+.sc-plays-panel.sc-plays-open .sc-plays-wrap { grid-template-rows: 1fr; }
+.sc-plays-wrap > .sc-plays { overflow: hidden; }
+
 .sc-plays { padding: 0 0 4px; max-height: 280px; overflow-y: auto; }
 .sc-play {
   display: flex;
