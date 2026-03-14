@@ -55,7 +55,7 @@ const TEAMS = [
     league: 'nfl',
     key: 'ATL',
     color: '#A71930',
-    bg: 'linear-gradient(135deg,#1a0408,#2d0a0f)',
+    bg: 'linear-gradient(135deg,#101820,#A71930)',
     logo: 'https://a.espncdn.com/i/teamlogos/nfl/500/atl.png',
     emoji: '🏈',
     type: 'pro',
