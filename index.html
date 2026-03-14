@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Georgia Sports Hub</title>
-  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="style.css?v=3" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
 </head>
@@ -13,35 +13,40 @@
   <!-- Header -->
   <header class="site-header">
     <div class="container header-inner">
+      <button class="hamburger" id="menuToggle" aria-label="Open menu">
+        <span></span><span></span><span></span>
+      </button>
       <div class="brand">
         <svg class="state-svg" viewBox="0 0 100 100" fill="currentColor" aria-hidden="true">
           <text y="75" font-size="80" font-family="Georgia, serif">G</text>
         </svg>
-        <div>
-          <div class="site-title">Georgia Sports Hub</div>
-          <div class="site-sub">Scores &amp; News for Every Georgia Team</div>
-        </div>
+        <div class="site-title">Georgia Sports Hub</div>
       </div>
       <div class="header-actions">
         <span class="last-updated" id="lastUpdated"></span>
-        <button class="btn-theme" id="themeToggle" title="Toggle light/dark mode">🌙</button>
+        <label class="theme-switch" title="Toggle light/dark mode">
+          <input type="checkbox" id="themeToggle">
+          <span class="theme-slider"></span>
+        </label>
         <button class="btn-refresh" id="refreshBtn" title="Refresh">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
             <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
           </svg>
-          Refresh
         </button>
       </div>
     </div>
   </header>
 
-  <!-- Team Navigation Tabs -->
-  <nav class="team-nav">
-    <div class="container">
-      <div class="nav-tabs" id="navTabs">
-        <button class="nav-tab active" data-team="all">All Teams</button>
-      </div>
+  <!-- Slide-out Nav Drawer -->
+  <div class="nav-overlay" id="navOverlay"></div>
+  <nav class="nav-drawer" id="navDrawer">
+    <div class="nav-drawer-header">
+      <span class="nav-drawer-title">Teams</span>
+      <button class="nav-drawer-close" id="menuClose" aria-label="Close menu">&times;</button>
+    </div>
+    <div class="nav-links" id="navTabs">
+      <button class="nav-link active" data-team="all">All Teams</button>
     </div>
   </nav>
 
@@ -62,6 +67,6 @@
     </div>
   </footer>
 
-  <script src="app.js"></script>
+  <script src="app.js?v=3"></script>
 </body>
 </html>

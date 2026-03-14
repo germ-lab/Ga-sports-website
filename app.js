@@ -563,6 +563,17 @@ function escHtml(s) {
 }
 
 // ── Dashboard (All Teams) ──────────────────────────────────────────────────────
+function getNextGameDate(team) {
+  const data = allData[team.id];
+  if (!data) return Infinity;
+  const games = data.games || {};
+  // Live games first
+  if (games.live?.length) return 0;
+  // Then next upcoming game
+  if (games.nextGame?.date) return games.nextGame.date.getTime();
+  return Infinity;
+}
+
 function renderDashboard() {
   const groups = {};
   for (const team of TEAMS) {
@@ -570,7 +581,19 @@ function renderDashboard() {
     groups[team.group].push(team);
   }
 
-  const html = Object.entries(groups).map(([groupName, teams]) => {
+  // Sort teams within each group by next upcoming game
+  for (const teams of Object.values(groups)) {
+    teams.sort((a, b) => getNextGameDate(a) - getNextGameDate(b));
+  }
+
+  // Sort groups so the group with the soonest next game comes first
+  const sortedGroups = Object.entries(groups).sort((a, b) => {
+    const aMin = Math.min(...a[1].map(t => getNextGameDate(t)));
+    const bMin = Math.min(...b[1].map(t => getNextGameDate(t)));
+    return aMin - bMin;
+  });
+
+  const html = sortedGroups.map(([groupName, teams]) => {
     const cards = teams.map(team => { try { return renderTeamCard(team); } catch(e) { console.error('Card error', team.id, e); return ''; } }).join('');
     return `
       <div class="group-block">
@@ -959,17 +982,11 @@ function buildNavTabs() {
   const container = document.getElementById('navTabs');
   TEAMS.forEach(team => {
     const btn = document.createElement('button');
-    btn.className = 'nav-tab';
+    btn.className = 'nav-link';
     btn.dataset.team = team.id;
-    btn.textContent = team.short;
+    btn.innerHTML = `<img class="nav-link-logo" src="${team.logo}" alt="" onerror="this.outerHTML='<span class=nav-link-emoji>${team.emoji}</span>'">${team.short}`;
     btn.addEventListener('click', () => switchTeam(team.id));
     container.appendChild(btn);
-  });
-
-  document.querySelectorAll('.nav-tab').forEach(tab => {
-    tab.addEventListener('click', () => {
-      switchTeam(tab.dataset.team);
-    });
   });
 }
 
@@ -977,9 +994,9 @@ function switchTeam(teamId) {
   if (simcastInterval) { clearInterval(simcastInterval); simcastInterval = null; }
   activeTeam = teamId;
 
-  // Update active tab
-  document.querySelectorAll('.nav-tab').forEach(tab => {
-    tab.classList.toggle('active', tab.dataset.team === teamId);
+  // Update active link
+  document.querySelectorAll('.nav-link').forEach(link => {
+    link.classList.toggle('active', link.dataset.team === teamId);
   });
 
   // Update content
@@ -1039,8 +1056,8 @@ function initTheme() {
 
 function applyTheme(theme) {
   document.documentElement.setAttribute('data-theme', theme);
-  const btn = document.getElementById('themeToggle');
-  if (btn) btn.textContent = theme === 'dark' ? '🌙' : '☀️';
+  const toggle = document.getElementById('themeToggle');
+  if (toggle) toggle.checked = theme === 'light';
   localStorage.setItem('theme', theme);
 }
 
@@ -1049,13 +1066,44 @@ function toggleTheme() {
   applyTheme(current === 'dark' ? 'light' : 'dark');
 }
 
+// ── Nav Drawer ──────────────────────────────────────────────────────────────────
+function initDrawer() {
+  const menuBtn = document.getElementById('menuToggle');
+  const closeBtn = document.getElementById('menuClose');
+  const overlay = document.getElementById('navOverlay');
+  const drawer = document.getElementById('navDrawer');
+
+  function openDrawer() {
+    drawer.classList.add('open');
+    overlay.classList.add('open');
+    menuBtn.classList.add('open');
+  }
+  function closeDrawer() {
+    drawer.classList.remove('open');
+    overlay.classList.remove('open');
+    menuBtn.classList.remove('open');
+  }
+
+  menuBtn.addEventListener('click', () => {
+    drawer.classList.contains('open') ? closeDrawer() : openDrawer();
+  });
+  closeBtn.addEventListener('click', closeDrawer);
+  overlay.addEventListener('click', closeDrawer);
+
+  // Close drawer when a nav link is clicked
+  drawer.addEventListener('click', (e) => {
+    if (e.target.classList.contains('nav-link')) closeDrawer();
+  });
+}
+
 // ── Init ────────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('footerYear').textContent = new Date().getFullYear();
 
   initTheme();
-  document.getElementById('themeToggle').addEventListener('click', toggleTheme);
+  document.getElementById('themeToggle').addEventListener('change', toggleTheme);
 
+  initDrawer();
   buildNavTabs();
 
   document.getElementById('refreshBtn').addEventListener('click', loadAll);
