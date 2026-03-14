@@ -796,7 +796,7 @@ function renderTeamView(team) {
       }
 
       return `
-        <div class="sched-item">
+        <div class="sched-item" onclick="openMatchupModal('${g.id}','${team.id}')" role="button" tabindex="0">
           <div class="sched-main">
             <div class="sched-matchup">${escHtml(g.name || `${g.away.abbrev} @ ${g.home.abbrev}`)}</div>
             <div class="sched-date">${fmtDate(g.date)}${g.tv ? ` · ${g.tv}` : ''}${g.venue ? ` · ${escHtml(g.venue)}` : ''}</div>
@@ -980,6 +980,175 @@ async function loadSimcast(gameId, sport, league, team) {
   } catch (err) {
     if (el) el.innerHTML = '<div class="error-state">Simcast unavailable</div>';
   }
+}
+
+// ── Matchup Modal ────────────────────────────────────────────────────────────────
+async function openMatchupModal(gameId, teamId) {
+  const team = TEAMS.find(t => t.id === teamId);
+  if (!team) return;
+
+  const data = allData[teamId] || {};
+  const games = data.games || {};
+  const allGames = [
+    ...(games.live || []),
+    ...(games.recentGames || []),
+    ...(games.upcomingGames || []),
+  ];
+  const game = allGames.find(g => g.id === gameId);
+  if (!game) return;
+
+  const modal = document.getElementById('matchupModal');
+  const overlay = document.getElementById('matchupOverlay');
+  const body = document.getElementById('matchupModalBody');
+  body.innerHTML = '<div class="mu-loading">Loading matchup…</div>';
+  modal.classList.add('open');
+  overlay.classList.add('open');
+  document.body.style.overflow = 'hidden';
+
+  try {
+    const summary = await apiFetch(`${BASE}/${team.sport}/${team.league}/summary?event=${gameId}`);
+    body.innerHTML = renderMatchupContent(summary, game, team, data.oddsMap || {});
+  } catch {
+    body.innerHTML = '<div class="mu-loading">Could not load matchup data.</div>';
+  }
+}
+
+function closeMatchupModal() {
+  document.getElementById('matchupModal').classList.remove('open');
+  document.getElementById('matchupOverlay').classList.remove('open');
+  document.body.style.overflow = '';
+}
+
+function renderMatchupContent(summary, game, team, oddsMap) {
+  const comps = summary.header?.competitions?.[0]?.competitors || [];
+  const awayComp = comps.find(c => c.homeAway === 'away') || comps[0] || {};
+  const homeComp = comps.find(c => c.homeAway === 'home') || comps[1] || {};
+
+  const awayRec  = awayComp.record?.[0]?.summary || '';
+  const homeRec  = homeComp.record?.[0]?.summary || '';
+  const awayLogo = awayComp.team?.logos?.[0]?.href || game.away.logo;
+  const homeLogo = homeComp.team?.logos?.[0]?.href || game.home.logo;
+  const awayName = awayComp.team?.displayName || game.away.name;
+  const homeName = homeComp.team?.displayName || game.home.name;
+
+  // Score / time block
+  const isLive  = game.state === 'in';
+  const isFinal = game.state === 'post';
+  let scoreHtml = '';
+  if (isLive || isFinal) {
+    const awayWin = game.away.winner;
+    const homeWin = game.home.winner;
+    const aCls = isFinal ? (awayWin ? 'mu-score-winner' : 'mu-score-loser') : '';
+    const hCls = isFinal ? (homeWin ? 'mu-score-winner' : 'mu-score-loser') : '';
+    const statusLabel = isLive
+      ? `<div class="mu-status-live"><span class="live-dot"></span>${game.period ? periodStr(game.period, team.sport) : ''} ${game.clock}</div>`
+      : `<div class="mu-status-final">Final</div>`;
+    scoreHtml = `
+      <div class="mu-scores">
+        <span class="mu-score ${aCls}">${game.away.score}</span>
+        <div class="mu-score-sep">${statusLabel}</div>
+        <span class="mu-score ${hCls}">${game.home.score}</span>
+      </div>`;
+  } else {
+    const timeStr = game.date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    scoreHtml = `<div class="mu-gametime">${fmtDate(game.date)}<br>${timeStr}${game.tv ? `<br>${escHtml(game.tv)}` : ''}</div>`;
+  }
+
+  // Win probability
+  const odds = oddsMap[game.id] || parseGameOdds(summary, team.key);
+  let winProbHtml = '';
+  if (odds?.ourWinPct != null && !isNaN(odds.ourWinPct)) {
+    const ourPct = Math.round(odds.ourWinPct);
+    const oppPct = 100 - ourPct;
+    const awayPct = game.isHome ? oppPct : ourPct;
+    const homePct = game.isHome ? ourPct : oppPct;
+    winProbHtml = `
+      <div class="mu-winprob">
+        <div class="mu-winprob-labels">
+          <span>${awayPct}%</span>
+          <span class="mu-winprob-title">Win Probability</span>
+          <span>${homePct}%</span>
+        </div>
+        <div class="mu-winprob-bar">
+          <div class="mu-winprob-away" style="width:${awayPct}%;background:${game.isHome ? '#555' : team.color}"></div>
+          <div class="mu-winprob-home" style="width:${homePct}%;background:${game.isHome ? team.color : '#555'}"></div>
+        </div>
+      </div>`;
+  }
+
+  // Betting odds
+  let oddsHtml = '';
+  if (odds?.spreadDetails || odds?.overUnder != null || odds?.ourML) {
+    const chips = [];
+    if (odds.spreadDetails) chips.push(`<div class="mu-odds-chip"><div class="mu-odds-val">${escHtml(odds.spreadDetails)}</div><div class="mu-odds-lbl">Spread</div></div>`);
+    if (odds.overUnder != null) chips.push(`<div class="mu-odds-chip"><div class="mu-odds-val">${odds.overUnder}</div><div class="mu-odds-lbl">O/U</div></div>`);
+    if (odds.ourML) chips.push(`<div class="mu-odds-chip"><div class="mu-odds-val">${escHtml(String(odds.ourML))}</div><div class="mu-odds-lbl">${escHtml(team.short)} ML</div></div>`);
+    oddsHtml = `
+      <div class="mu-odds">
+        <div class="mu-odds-src">DraftKings</div>
+        <div class="mu-odds-chips">${chips.join('')}</div>
+      </div>`;
+  }
+
+  // Leaders (top performers)
+  let leadersHtml = '';
+  const leaders = summary.leaders || [];
+  const leaderRows = leaders.slice(0, 4).map(cat => {
+    const leader = cat.leaders?.[0];
+    if (!leader) return '';
+    const ath      = leader.athlete;
+    const photo    = ath?.headshot?.href || '';
+    const athName  = ath?.displayName || ath?.fullName || '';
+    const teamAbbr = leader.team?.abbreviation || '';
+    return `
+      <div class="mu-leader-row">
+        <div class="mu-leader-stat-name">${escHtml(cat.displayName || cat.name || '')}</div>
+        <div class="mu-leader-info">
+          ${photo ? `<img class="mu-leader-photo" src="${escHtml(photo)}" alt="" onerror="this.style.display='none'">` : ''}
+          <div>
+            <div class="mu-leader-name">${escHtml(athName)}</div>
+            <div class="mu-leader-team">${escHtml(teamAbbr)}</div>
+          </div>
+          <div class="mu-leader-value">${escHtml(leader.displayValue || '')}</div>
+        </div>
+      </div>`;
+  }).filter(Boolean);
+  if (leaderRows.length) {
+    leadersHtml = `
+      <div class="mu-section">
+        <div class="mu-section-title">${isFinal ? 'Game Leaders' : 'Season Leaders'}</div>
+        ${leaderRows.join('')}
+      </div>`;
+  }
+
+  // Venue
+  const venueName = summary.gameInfo?.venue?.fullName || game.venue || '';
+  const venueCity = summary.gameInfo?.venue?.address?.city || '';
+  const venueHtml = venueName
+    ? `<div class="mu-venue">📍 ${escHtml(venueName)}${venueCity ? `, ${escHtml(venueCity)}` : ''}</div>`
+    : '';
+
+  return `
+    <div class="mu-teams">
+      <div class="mu-team">
+        <img class="mu-team-logo" src="${escHtml(awayLogo)}" alt="" onerror="this.style.display='none'">
+        <div class="mu-team-name">${escHtml(awayName)}</div>
+        ${awayRec ? `<div class="mu-team-rec">${escHtml(awayRec)}</div>` : ''}
+        <div class="mu-team-label">Away</div>
+      </div>
+      <div class="mu-center">${scoreHtml}</div>
+      <div class="mu-team">
+        <img class="mu-team-logo" src="${escHtml(homeLogo)}" alt="" onerror="this.style.display='none'">
+        <div class="mu-team-name">${escHtml(homeName)}</div>
+        ${homeRec ? `<div class="mu-team-rec">${escHtml(homeRec)}</div>` : ''}
+        <div class="mu-team-label">Home</div>
+      </div>
+    </div>
+    ${winProbHtml}
+    ${oddsHtml}
+    ${leadersHtml}
+    ${venueHtml}
+  `;
 }
 
 // ── Navigation ──────────────────────────────────────────────────────────────────

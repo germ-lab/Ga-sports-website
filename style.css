@@ -1010,3 +1010,323 @@ body {
   .site-title { font-size: .85rem; }
   .team-view-hero { flex-direction: column; text-align: center; }
 }
+
+/* ============================================
+   Matchup Preview Modal
+   ============================================ */
+
+/* Backdrop */
+.mu-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.65);
+  z-index: 200;
+  backdrop-filter: blur(3px);
+}
+.mu-overlay.open { display: block; }
+
+/* Modal sheet — slides up from bottom */
+.mu-modal {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  max-width: 560px;
+  margin: 0 auto;
+  background: var(--surface);
+  border-radius: 18px 18px 0 0;
+  border-top: 1px solid var(--border);
+  box-shadow: 0 -8px 40px rgba(0,0,0,.5);
+  z-index: 201;
+  transform: translateY(100%);
+  transition: transform .3s cubic-bezier(.32,.72,0,1);
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+}
+.mu-modal.open { transform: translateY(0); }
+
+.mu-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px 12px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.mu-modal-title {
+  font-size: .75rem;
+  font-weight: 700;
+  letter-spacing: .8px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.mu-close {
+  background: var(--surface2);
+  border: none;
+  color: var(--text);
+  font-size: 1.2rem;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  transition: background .15s;
+}
+.mu-close:hover { background: var(--border); }
+
+.mu-modal-body {
+  overflow-y: auto;
+  padding: 0 0 32px;
+  flex: 1;
+}
+
+/* Loading */
+.mu-loading {
+  padding: 48px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: .9rem;
+}
+
+/* Teams row */
+.mu-teams {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 24px 20px 16px;
+}
+.mu-team {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  text-align: center;
+}
+.mu-team-logo {
+  width: 64px;
+  height: 64px;
+  object-fit: contain;
+}
+.mu-team-name {
+  font-size: .8rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+.mu-team-rec {
+  font-size: .72rem;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+.mu-team-label {
+  font-size: .62rem;
+  text-transform: uppercase;
+  letter-spacing: .6px;
+  color: var(--text-muted);
+}
+
+/* Center column — scores or gametime */
+.mu-center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  flex-shrink: 0;
+  min-width: 96px;
+}
+.mu-scores {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.mu-score {
+  font-size: 2.4rem;
+  font-weight: 900;
+  line-height: 1;
+}
+.mu-score-winner { color: var(--text); }
+.mu-score-loser  { color: var(--text-muted); }
+.mu-score-sep {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+.mu-status-final {
+  font-size: .65rem;
+  font-weight: 700;
+  letter-spacing: .6px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.mu-status-live {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: .72rem;
+  font-weight: 700;
+  color: #ef4444;
+}
+.mu-gametime {
+  font-size: .78rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-align: center;
+  line-height: 1.4;
+}
+
+/* Divider */
+.mu-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 0 20px;
+}
+
+/* Win probability */
+.mu-winprob {
+  padding: 14px 20px;
+  border-top: 1px solid var(--border);
+}
+.mu-winprob-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: .72rem;
+  font-weight: 700;
+  margin-bottom: 6px;
+  color: var(--text);
+}
+.mu-winprob-title {
+  font-size: .62rem;
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  color: var(--text-muted);
+}
+.mu-winprob-bar {
+  display: flex;
+  height: 8px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--surface2);
+}
+.mu-winprob-away,
+.mu-winprob-home {
+  height: 100%;
+  transition: width .4s ease;
+}
+
+/* Betting odds */
+.mu-odds {
+  padding: 12px 20px;
+  border-top: 1px solid var(--border);
+}
+.mu-odds-src {
+  font-size: .6rem;
+  font-weight: 700;
+  letter-spacing: .6px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+.mu-odds-chips {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.mu-odds-chip {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 12px;
+  text-align: center;
+  min-width: 64px;
+}
+.mu-odds-val {
+  font-size: .9rem;
+  font-weight: 800;
+  line-height: 1.1;
+}
+.mu-odds-lbl {
+  font-size: .58rem;
+  text-transform: uppercase;
+  letter-spacing: .4px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+/* Section */
+.mu-section {
+  padding: 12px 20px;
+  border-top: 1px solid var(--border);
+}
+.mu-section-title {
+  font-size: .62rem;
+  font-weight: 700;
+  letter-spacing: .8px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 10px;
+}
+
+/* Leaders */
+.mu-leader-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--border);
+  gap: 12px;
+}
+.mu-leader-row:last-child { border-bottom: none; }
+.mu-leader-stat-name {
+  font-size: .68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .4px;
+  color: var(--text-muted);
+  min-width: 72px;
+}
+.mu-leader-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+}
+.mu-leader-photo {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  object-fit: cover;
+  object-position: top;
+  background: var(--surface2);
+  flex-shrink: 0;
+}
+.mu-leader-name { font-size: .8rem; font-weight: 700; }
+.mu-leader-team { font-size: .65rem; color: var(--text-muted); }
+.mu-leader-value {
+  font-size: .9rem;
+  font-weight: 800;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+/* Venue */
+.mu-venue {
+  padding: 12px 20px;
+  border-top: 1px solid var(--border);
+  font-size: .75rem;
+  color: var(--text-muted);
+}
+
+/* Clickable schedule items */
+.sched-item {
+  cursor: pointer;
+  transition: background .15s;
+}
+.sched-item:hover { background: var(--surface2); }
