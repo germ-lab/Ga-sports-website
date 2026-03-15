@@ -131,20 +131,6 @@ const TEAMS = [
     type: 'college',
     group: 'UGA Bulldogs',
   },
-  {
-    id: 'uga-wbball',
-    name: "UGA Women's Basketball",
-    short: "UGA Women's",
-    sport: 'basketball',
-    league: 'womens-college-basketball',
-    key: '61',
-    color: '#BA0C2F',
-    bg: 'linear-gradient(135deg,#150308,#0f0f0f)',
-    logo: 'https://a.espncdn.com/i/teamlogos/ncaa/500/61.png',
-    emoji: '🏀',
-    type: 'college',
-    group: 'UGA Bulldogs',
-  },
 ];
 
 // ── State ──────────────────────────────────────────────────────────────────────
