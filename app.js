@@ -1265,6 +1265,64 @@ function renderMatchupContent(summary, game, team, oddsMap) {
     ? `<div class="mu-venue">📍 ${escHtml(venueName)}${venueCity ? `, ${escHtml(venueCity)}` : ''}</div>`
     : '';
 
+  // ── Box Score (completed games only) ─────────────────────────────────────────
+  let boxScoreHtml = '';
+  if (isFinal) {
+    const bsPlayers = summary.boxscore?.players || [];
+    const BS_COLS = ['MIN','PTS','FG','3PT','FT','REB','AST','STL','BLK','TO','+/-'];
+
+    const panes = bsPlayers.map((group, gi) => {
+      const abbr   = group.team?.abbreviation || `Team ${gi + 1}`;
+      const color  = gi === 0 ? (game.isHome ? '#888' : team.color) : (game.isHome ? team.color : '#888');
+      const sg     = (group.statistics || [])[0] || {};
+      const labels = sg.labels || [];
+      const cols   = BS_COLS.filter(c => labels.includes(c));
+      const athletes = sg.athletes || [];
+
+      const headerCells = cols.map(c => `<th>${c}</th>`).join('');
+      const rows = athletes
+        .filter(a => !a.didNotPlay)
+        .map(a => {
+          const pName    = a.athlete?.displayName || '—';
+          const isStart  = a.starter;
+          const statCells = cols.map(col => {
+            const idx = labels.indexOf(col);
+            const val = idx >= 0 ? (a.stats?.[idx] ?? '—') : '—';
+            return `<td>${escHtml(String(val))}</td>`;
+          }).join('');
+          return `<tr class="${isStart ? 'bs-starter' : ''}">
+            <td class="bs-player-name">${escHtml(pName)}</td>
+            ${statCells}
+          </tr>`;
+        }).join('');
+
+      const dnpList = athletes.filter(a => a.didNotPlay).map(a => escHtml(a.athlete?.displayName || '')).join(', ');
+      const dnpHtml = dnpList ? `<div class="bs-dnp">DNP: ${dnpList}</div>` : '';
+
+      return { abbr, color, headerCells, rows, dnpHtml };
+    });
+
+    if (panes.length === 2) {
+      boxScoreHtml = `
+        <div class="mu-section bs-section">
+          <div class="bs-tabs">
+            <button class="bs-tab bs-active" style="border-color:${panes[0].color}" onclick="bsSwitch(this,0)">${escHtml(panes[0].abbr)}</button>
+            <button class="bs-tab" style="" onclick="bsSwitch(this,1)">${escHtml(panes[1].abbr)}</button>
+          </div>
+          ${panes.map((p, i) => `
+            <div class="bs-pane${i === 0 ? ' bs-pane-active' : ''}">
+              <div class="pm-table-wrap">
+                <table class="pm-table bs-table">
+                  <thead><tr><th class="bs-name-col">Player</th>${p.headerCells}</tr></thead>
+                  <tbody>${p.rows}</tbody>
+                </table>
+              </div>
+              ${p.dnpHtml}
+            </div>`).join('')}
+        </div>`;
+    }
+  }
+
   return `
     <div class="mu-teams">
       <div class="mu-team">
@@ -1284,8 +1342,15 @@ function renderMatchupContent(summary, game, team, oddsMap) {
     ${winProbHtml}
     ${oddsHtml}
     ${leadersHtml}
+    ${boxScoreHtml}
     ${venueHtml}
   `;
+}
+
+function bsSwitch(btn, idx) {
+  const section = btn.closest('.bs-section');
+  section.querySelectorAll('.bs-tab').forEach((t, i) => t.classList.toggle('bs-active', i === idx));
+  section.querySelectorAll('.bs-pane').forEach((p, i) => p.classList.toggle('bs-pane-active', i === idx));
 }
 
 // ── Navigation ──────────────────────────────────────────────────────────────────
