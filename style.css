@@ -968,15 +968,19 @@ body {
 
 .rp-card {
   display: flex;
-  gap: 10px;
-  padding: 12px 14px;
+  gap: 12px;
+  padding: 10px 14px;
   background: var(--surface);
-  text-decoration: none;
+  cursor: pointer;
   color: inherit;
   transition: background .15s;
-  align-items: flex-start;
+  align-items: center;
 }
 .rp-card:hover { background: var(--surface2); }
+.rp-card .rp-name {
+  font-size: .82rem;
+  font-weight: 600;
+}
 
 .rp-photo-wrap {
   position: relative;

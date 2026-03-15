@@ -633,68 +633,18 @@ function renderRosterPanel(team, data) {
     : '';
 
   const cards = roster.map(athlete => {
-    const name    = athlete.displayName || athlete.fullName || '';
-    const jersey  = athlete.jersey || '';
-    const pos     = athlete.position?.abbreviation || '';
-    const ht      = athlete.displayHeight || '';
-    const wt      = athlete.displayWeight || '';
-    const exp     = athlete.experience?.years;
-    const college = athlete.college?.name || '';
-    const img     = athlete.headshot?.href || '';
-    const espnUrl = athlete.links?.find(l => l.rel?.includes('playercard'))?.href || '#';
-    const id      = athlete.id;
-
-    const groups = lastGameStats[id] || [];
-    let statsHtml = '';
-    if (groups.length) {
-      const preferred = KEY_STATS[team.sport];
-      const { labels, stats } = groups[0];
-      const cols = preferred
-        ? preferred.filter(c => labels.includes(c))
-        : labels.slice(0, 4);
-      const pairs = cols.map(col => {
-        const idx = labels.indexOf(col);
-        const val = idx >= 0 ? stats[idx] : null;
-        return val && val !== '--' && val !== '0' && val !== '0.0'
-          ? `<div class="rp-stat"><div class="rp-stat-val">${escHtml(val)}</div><div class="rp-stat-lbl">${col}</div></div>`
-          : '';
-      }).filter(Boolean);
-
-      // For football, also check other groups (QB might have rushing too)
-      if (team.sport === 'football' && groups.length > 1) {
-        for (let i = 1; i < groups.length; i++) {
-          const g = groups[i];
-          g.labels.slice(0, 3).forEach((col, ci) => {
-            const val = g.stats[ci];
-            if (val && val !== '--' && val !== '0') {
-              pairs.push(`<div class="rp-stat"><div class="rp-stat-val">${escHtml(val)}</div><div class="rp-stat-lbl">${col}</div></div>`);
-            }
-          });
-        }
-      }
-
-      if (pairs.length) {
-        const groupLabel = groups.length > 1 ? '' : (groups[0].groupName ? `<span class="rp-group">${groups[0].groupName}</span>` : '');
-        statsHtml = `<div class="rp-stats">${groupLabel}${pairs.join('')}</div>`;
-      }
-    }
-
-    const metaParts = [pos, ht, wt].filter(Boolean);
-    const expStr = exp != null ? (exp === 0 ? 'Rookie' : `${exp}yr`) : '';
+    const name = athlete.displayName || athlete.fullName || '';
+    const img  = athlete.headshot?.href || '';
+    const id   = athlete.id;
 
     return `
       <div class="rp-card" role="button" tabindex="0" onclick="openPlayerModal('${id}','${team.id}')" style="--team-color:${team.color}">
         <div class="rp-photo-wrap">
           ${img
             ? `<img class="rp-photo" src="${escHtml(img)}" alt="${escHtml(name)}" loading="lazy" onerror="this.style.display='none'">`
-            : `<div class="rp-photo-placeholder">${jersey || '?'}</div>`}
-          ${jersey ? `<span class="rp-jersey">#${jersey}</span>` : ''}
+            : `<div class="rp-photo-placeholder">?</div>`}
         </div>
-        <div class="rp-body">
-          <div class="rp-name">${escHtml(name)}</div>
-          <div class="rp-meta">${escHtml(metaParts.join(' · '))}${expStr ? ` · ${expStr}` : ''}${college ? ` · ${escHtml(college)}` : ''}</div>
-          ${statsHtml}
-        </div>
+        <div class="rp-name">${escHtml(name)}</div>
       </div>`;
   }).join('');
 
