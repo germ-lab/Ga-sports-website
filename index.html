@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Georgia Sports Hub</title>
-  <link rel="stylesheet" href="style.css?v=4" />
+  <link rel="stylesheet" href="style.css?v=5" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
 </head>
@@ -64,6 +64,18 @@
     </div>
   </footer>
 
+  <!-- Player Profile Modal -->
+  <div class="mu-overlay" id="playerOverlay" onclick="closePlayerModal()"></div>
+  <div class="mu-modal" id="playerModal">
+    <div class="mu-modal-header">
+      <span class="mu-modal-title">Player Profile</span>
+      <button class="mu-close" onclick="closePlayerModal()" aria-label="Close">&times;</button>
+    </div>
+    <div class="mu-modal-body" id="playerModalBody">
+      <div class="mu-loading">Loading…</div>
+    </div>
+  </div>
+
   <!-- Matchup Preview Modal -->
   <div class="mu-overlay" id="matchupOverlay" onclick="closeMatchupModal()"></div>
   <div class="mu-modal" id="matchupModal">
@@ -76,6 +88,6 @@
     </div>
   </div>
 
-  <script src="app.js?v=4"></script>
+  <script src="app.js?v=5"></script>
 </body>
 </html>

@@ -683,7 +683,7 @@ function renderRosterPanel(team, data) {
     const expStr = exp != null ? (exp === 0 ? 'Rookie' : `${exp}yr`) : '';
 
     return `
-      <a class="rp-card" href="${espnUrl}" target="_blank" rel="noopener noreferrer" style="--team-color:${team.color}">
+      <div class="rp-card" role="button" tabindex="0" onclick="openPlayerModal('${id}','${team.id}')" style="--team-color:${team.color}">
         <div class="rp-photo-wrap">
           ${img
             ? `<img class="rp-photo" src="${escHtml(img)}" alt="${escHtml(name)}" loading="lazy" onerror="this.style.display='none'">`
@@ -695,7 +695,7 @@ function renderRosterPanel(team, data) {
           <div class="rp-meta">${escHtml(metaParts.join(' · '))}${expStr ? ` · ${expStr}` : ''}${college ? ` · ${escHtml(college)}` : ''}</div>
           ${statsHtml}
         </div>
-      </a>`;
+      </div>`;
   }).join('');
 
   return `
@@ -1032,6 +1032,202 @@ function closeMatchupModal() {
   document.getElementById('matchupModal').classList.remove('open');
   document.getElementById('matchupOverlay').classList.remove('open');
   document.body.style.overflow = '';
+}
+
+// ── Player Profile Modal ──────────────────────────────────────────────────────
+async function openPlayerModal(athleteId, teamId) {
+  const team = TEAMS.find(t => t.id === teamId);
+  if (!team) return;
+
+  const modal   = document.getElementById('playerModal');
+  const overlay = document.getElementById('playerOverlay');
+  const body    = document.getElementById('playerModalBody');
+  body.innerHTML = '<div class="mu-loading">Loading player…</div>';
+  modal.classList.add('open');
+  overlay.classList.add('open');
+  document.body.style.overflow = 'hidden';
+
+  const [athRes, gamelogRes, statsRes, newsRes] = await Promise.allSettled([
+    apiFetch(`${BASE}/${team.sport}/${team.league}/athletes/${athleteId}`),
+    apiFetch(`${BASE}/${team.sport}/${team.league}/athletes/${athleteId}/gamelog`),
+    apiFetch(`${BASE}/${team.sport}/${team.league}/athletes/${athleteId}/statistics`),
+    apiFetch(`${BASE}/${team.sport}/${team.league}/news?athlete=${athleteId}&limit=5`),
+  ]);
+
+  body.innerHTML = renderPlayerContent(
+    athRes.value,
+    gamelogRes.value,
+    statsRes.value,
+    newsRes.value,
+    team
+  );
+}
+
+function closePlayerModal() {
+  document.getElementById('playerModal').classList.remove('open');
+  document.getElementById('playerOverlay').classList.remove('open');
+  document.body.style.overflow = '';
+}
+
+function renderPlayerContent(athData, gamelogData, statsData, newsData, team) {
+  const ath     = athData?.athlete || athData?.athletes?.[0] || {};
+  const name    = ath.displayName || ath.fullName || 'Unknown';
+  const photo   = ath.headshot?.href || '';
+  const pos     = ath.position?.displayName || ath.position?.abbreviation || '';
+  const jersey  = ath.jersey || '';
+  const ht      = ath.displayHeight || '';
+  const wt      = ath.displayWeight || '';
+  const exp     = ath.experience?.years;
+  const expStr  = exp != null ? (exp === 0 ? 'Rookie' : `${exp} yr${exp !== 1 ? 's' : ''}`) : '';
+  const college = ath.college?.name || '';
+
+  // ── Header ──────────────────────────────────────────────────────────────────
+  const headerHtml = `
+    <div class="pm-hero" style="${team.bg ? `background:${team.bg}` : `background:var(--surface2)`}">
+      <div class="pm-hero-inner">
+        <div class="pm-photo-wrap">
+          ${photo
+            ? `<img class="pm-photo" src="${escHtml(photo)}" alt="${escHtml(name)}" onerror="this.style.display='none'">`
+            : `<div class="pm-photo-placeholder">${jersey || '?'}</div>`}
+        </div>
+        <div class="pm-hero-info">
+          <div class="pm-hero-name">${escHtml(name)}</div>
+          <div class="pm-hero-pos" style="color:${team.color}">${jersey ? `#${jersey} · ` : ''}${escHtml(pos)}</div>
+          <div class="pm-hero-meta">${[ht, wt, expStr, college].filter(Boolean).join(' · ')}</div>
+        </div>
+      </div>
+    </div>`;
+
+  // ── Parse gamelog ────────────────────────────────────────────────────────────
+  const seasonTypes  = gamelogData?.seasonTypes || [];
+  const eventsMap    = gamelogData?.events || {};
+  const regSeason    = seasonTypes.find(s => s.id === 2 || s.abbreviation === 'reg') || seasonTypes[0];
+  const mainCat      = regSeason?.categories?.[0] || null;
+  const labels       = mainCat?.labels || [];
+  const preferred    = KEY_STATS[team.sport] || labels.slice(0, 6);
+  const cols         = Array.isArray(preferred) ? preferred.filter(c => labels.includes(c)) : labels.slice(0, 6);
+
+  // ── Season averages ──────────────────────────────────────────────────────────
+  let seasonHtml = '';
+  const avgArr = mainCat?.averages || mainCat?.totals || mainCat?.seasonTotals || [];
+  if (avgArr.length && cols.length) {
+    const chips = cols.map(col => {
+      const idx = labels.indexOf(col);
+      const val = idx >= 0 ? avgArr[idx] : null;
+      if (!val || val === '--' || val === '0' || val === '0.0') return '';
+      return `<div class="pm-stat-chip"><div class="pm-stat-val">${escHtml(String(val))}</div><div class="pm-stat-lbl">${col}</div></div>`;
+    }).filter(Boolean);
+    if (chips.length) {
+      seasonHtml = `
+        <div class="pm-section">
+          <div class="pm-section-title" style="color:${team.color}">Season Averages</div>
+          <div class="pm-stat-chips">${chips.join('')}</div>
+        </div>`;
+    }
+  }
+
+  // ── Career averages (from statistics endpoint) ───────────────────────────────
+  let careerHtml = '';
+  const careerCats = statsData?.splits?.categories || statsData?.athlete?.statistics || [];
+  if (careerCats.length) {
+    const careerCat = careerCats.find(c => c.name === 'general' || c.displayName?.toLowerCase().includes('general')) || careerCats[0];
+    const cLabels = careerCat?.labels || careerCat?.names || [];
+    const cStats  = careerCat?.stats || careerCat?.totals || [];
+    if (cStats.length) {
+      const cCols = Array.isArray(preferred) ? preferred.filter(c => cLabels.includes(c)) : cLabels.slice(0, 6);
+      const chips = cCols.map(col => {
+        const idx = cLabels.indexOf(col);
+        const val = idx >= 0 ? cStats[idx] : null;
+        if (!val || val === '--' || val === '0' || val === '0.0') return '';
+        return `<div class="pm-stat-chip"><div class="pm-stat-val">${escHtml(String(val))}</div><div class="pm-stat-lbl">${col}</div></div>`;
+      }).filter(Boolean);
+      if (chips.length) {
+        careerHtml = `
+          <div class="pm-section">
+            <div class="pm-section-title" style="color:${team.color}">Career Averages</div>
+            <div class="pm-stat-chips">${chips.join('')}</div>
+          </div>`;
+      }
+    }
+  }
+
+  // ── Last 5 games ─────────────────────────────────────────────────────────────
+  let gamesHtml = '';
+  const gameEvents = mainCat?.events || [];
+  const last5 = gameEvents.slice(-5).reverse();
+  if (last5.length && cols.length) {
+    const headerCells = cols.map(c => `<th>${c}</th>`).join('');
+    const rows = last5.map(ev => {
+      const info    = eventsMap[ev.eventId] || {};
+      const opp     = info.opponent?.abbreviation || info.opponent?.displayName || '—';
+      const atVs    = info.homeAway === 'home' ? 'vs' : '@';
+      const result  = info.result || '';
+      const score   = info.score || '';
+      const dateStr = info.gameDate
+        ? new Date(info.gameDate).toLocaleDateString('en-US', { month: 'numeric', day: 'numeric' })
+        : '';
+      const resCls  = result === 'W' ? 'win' : result === 'L' ? 'loss' : '';
+      const statCells = cols.map(col => {
+        const idx = labels.indexOf(col);
+        const val = idx >= 0 ? (ev.stats?.[idx] ?? '—') : '—';
+        return `<td>${escHtml(String(val))}</td>`;
+      }).join('');
+      return `
+        <tr>
+          <td class="pm-game-date">${dateStr}</td>
+          <td class="pm-game-opp">${atVs} ${escHtml(opp)}</td>
+          <td class="pm-game-result ${resCls}">${result}${score ? ` ${escHtml(score)}` : ''}</td>
+          ${statCells}
+        </tr>`;
+    }).join('');
+    gamesHtml = `
+      <div class="pm-section">
+        <div class="pm-section-title" style="color:${team.color}">Last ${last5.length} Games</div>
+        <div class="pm-table-wrap">
+          <table class="pm-table">
+            <thead><tr><th>Date</th><th>Opp</th><th>Result</th>${headerCells}</tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+      </div>`;
+  }
+
+  // ── News ─────────────────────────────────────────────────────────────────────
+  let newsHtml = '';
+  const articles = newsData?.articles || newsData?.news || [];
+  if (articles.length) {
+    const items = articles.slice(0, 5).map(a => {
+      const hl   = a.headline || a.title || '';
+      const desc = a.description || '';
+      const pub  = a.published
+        ? new Date(a.published).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+        : '';
+      const img  = a.images?.[0]?.url || a.image?.url || '';
+      return `
+        <div class="pm-news-item">
+          ${img ? `<img class="pm-news-img" src="${escHtml(img)}" alt="" onerror="this.style.display='none'">` : ''}
+          <div class="pm-news-body">
+            <div class="pm-news-hl">${escHtml(hl)}</div>
+            ${desc ? `<div class="pm-news-desc">${escHtml(desc.length > 110 ? desc.slice(0, 110) + '…' : desc)}</div>` : ''}
+            ${pub ? `<div class="pm-news-date">${pub}</div>` : ''}
+          </div>
+        </div>`;
+    }).join('');
+    newsHtml = `
+      <div class="pm-section">
+        <div class="pm-section-title" style="color:${team.color}">Latest News</div>
+        <div class="pm-news-list">${items}</div>
+      </div>`;
+  }
+
+  const noContent = !seasonHtml && !careerHtml && !gamesHtml && !newsHtml;
+  return `
+    ${headerHtml}
+    ${seasonHtml}
+    ${careerHtml}
+    ${gamesHtml}
+    ${newsHtml}
+    ${noContent ? '<div class="mu-loading">No stats available for this player.</div>' : ''}`;
 }
 
 function renderMatchupContent(summary, game, team, oddsMap) {
