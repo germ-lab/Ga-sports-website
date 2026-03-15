@@ -633,9 +633,11 @@ function renderRosterPanel(team, data) {
     : '';
 
   const cards = roster.map(athlete => {
-    const name = athlete.displayName || athlete.fullName || '';
-    const img  = athlete.headshot?.href || '';
-    const id   = athlete.id;
+    const name   = athlete.displayName || athlete.fullName || '';
+    const img    = athlete.headshot?.href || '';
+    const jersey = athlete.jersey || '';
+    const pos    = athlete.position?.abbreviation || '';
+    const id     = athlete.id;
 
     return `
       <div class="rp-card" role="button" tabindex="0" onclick="openPlayerModal('${id}','${team.id}')" style="--team-color:${team.color}">
@@ -644,7 +646,10 @@ function renderRosterPanel(team, data) {
             ? `<img class="rp-photo" src="${escHtml(img)}" alt="${escHtml(name)}" loading="lazy" onerror="this.style.display='none'">`
             : `<div class="rp-photo-placeholder">?</div>`}
         </div>
-        <div class="rp-name">${escHtml(name)}</div>
+        <div class="rp-info">
+          <div class="rp-name">${escHtml(name)}</div>
+          ${(jersey || pos) ? `<div class="rp-sub">${[jersey ? `#${jersey}` : '', pos].filter(Boolean).join(' · ')}</div>` : ''}
+        </div>
       </div>`;
   }).join('');
 

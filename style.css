@@ -977,10 +977,9 @@ body {
   align-items: center;
 }
 .rp-card:hover { background: var(--surface2); }
-.rp-card .rp-name {
-  font-size: .82rem;
-  font-weight: 600;
-}
+.rp-info { display: flex; flex-direction: column; gap: 2px; }
+.rp-card .rp-name { font-size: .82rem; font-weight: 600; }
+.rp-sub { font-size: .7rem; color: var(--text-muted); font-weight: 500; }
 
 .rp-photo-wrap {
   position: relative;
