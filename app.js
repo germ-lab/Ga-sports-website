@@ -1194,41 +1194,12 @@ function renderPlayerContent(ath, overview, team) {
       </div>`;
   }
 
-  // ── News from overview.news (direct array) ────────────────────────────────────
-  let newsHtml = '';
-  const articles = Array.isArray(overview?.news) ? overview.news : (overview?.news?.articles || []);
-  if (articles.length) {
-    const items = articles.slice(0, 5).map(a => {
-      const hl   = a.headline || a.title || '';
-      const desc = a.description || '';
-      const pub  = a.published
-        ? new Date(a.published).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-        : '';
-      const img  = a.images?.[0]?.url || '';
-      return `
-        <div class="pm-news-item">
-          ${img ? `<img class="pm-news-img" src="${escHtml(img)}" alt="" onerror="this.style.display='none'">` : ''}
-          <div class="pm-news-body">
-            <div class="pm-news-hl">${escHtml(hl)}</div>
-            ${desc ? `<div class="pm-news-desc">${escHtml(desc.length > 110 ? desc.slice(0, 110) + '…' : desc)}</div>` : ''}
-            ${pub ? `<div class="pm-news-date">${pub}</div>` : ''}
-          </div>
-        </div>`;
-    }).join('');
-    newsHtml = `
-      <div class="pm-section">
-        <div class="pm-section-title" style="color:${team.color}">Latest News</div>
-        <div class="pm-news-list">${items}</div>
-      </div>`;
-  }
-
-  const noContent = !seasonHtml && !careerHtml && !gamesHtml && !newsHtml;
+  const noContent = !seasonHtml && !careerHtml && !gamesHtml;
   return `
     ${headerHtml}
     ${seasonHtml}
     ${careerHtml}
     ${gamesHtml}
-    ${newsHtml}
     ${noContent ? '<div class="mu-loading">No stats available for this player.</div>' : ''}`;
 }
 
