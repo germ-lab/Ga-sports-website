@@ -1280,8 +1280,10 @@ function renderMatchupContent(summary, game, team, oddsMap) {
       const athletes = sg.athletes || [];
 
       const headerCells = cols.map(c => `<th>${c}</th>`).join('');
+      const minIdx = labels.indexOf('MIN');
       const rows = athletes
         .filter(a => !a.didNotPlay)
+        .sort((a, b) => parseFloat(b.stats?.[minIdx] ?? 0) - parseFloat(a.stats?.[minIdx] ?? 0))
         .map(a => {
           const pName    = a.athlete?.displayName || '—';
           const isStart  = a.starter;
