@@ -700,14 +700,11 @@ function renderRosterPanel(team, data) {
 
   return `
     <div class="panel-box rp-panel">
-      <div class="panel-box-header rp-toggle" style="color:${team.color}" onclick="this.closest('.rp-panel').classList.toggle('rp-open')" role="button" tabindex="0">
+      <div class="panel-box-header" style="color:${team.color}">
         Roster & Stats
         ${gameLabel ? `<span class="rp-game-label">${escHtml(gameLabel)}</span>` : ''}
-        <span class="rp-chevron">▾</span>
       </div>
-      <div class="rp-body-wrap">
-        <div class="rp-grid">${cards}</div>
-      </div>
+      <div class="rp-grid">${cards}</div>
     </div>`;
 }
 
@@ -766,13 +763,15 @@ function renderTeamView(team) {
   document.getElementById('mainContainer').innerHTML = `
     ${heroHtml}
     <div class="team-view">
-      ${simcastPlaceholder}
-      ${renderScheduleCalendar(team, games, oddsMap)}
-      ${rosterHtml}
-      <div class="panel-box">
-        <div class="panel-box-header" style="color:${team.color}">Latest News</div>
-        <div class="news-list-full">${newsHtml}</div>
+      <div class="tv-left">
+        ${simcastPlaceholder}
+        ${renderScheduleCalendar(team, games, oddsMap)}
+        <div class="panel-box">
+          <div class="panel-box-header" style="color:${team.color}">Latest News</div>
+          <div class="news-list-full">${newsHtml}</div>
+        </div>
       </div>
+      ${rosterHtml}
     </div>
   `;
 

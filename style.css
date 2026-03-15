@@ -544,9 +544,21 @@ body {
 /* ---- Full Team View ---- */
 .team-view {
   display: grid;
-  grid-template-columns: 1fr 1.4fr;
+  grid-template-columns: 1.4fr 1fr;
   gap: 24px;
   align-items: start;
+}
+.tv-left {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  min-width: 0;
+}
+.rp-panel {
+  position: sticky;
+  top: 70px;
+  max-height: calc(100vh - 90px);
+  overflow-y: auto;
 }
 
 .team-view-hero {
@@ -941,12 +953,7 @@ body {
   display: flex;
   align-items: center;
   gap: 10px;
-  cursor: pointer;
-  user-select: none;
 }
-.rp-toggle:hover { opacity: .85; }
-.rp-chevron { margin-left: auto; font-size: .85rem; transition: transform .2s; color: var(--text-muted); }
-.rp-panel.rp-open .rp-chevron { transform: rotate(180deg); }
 
 .rp-game-label {
   font-size: .7rem;
@@ -955,17 +962,9 @@ body {
   letter-spacing: 0;
 }
 
-.rp-body-wrap {
-  display: grid;
-  grid-template-rows: 0fr;
-  transition: grid-template-rows .25s ease;
-}
-.rp-panel.rp-open .rp-body-wrap { grid-template-rows: 1fr; }
-.rp-body-wrap > .rp-grid { overflow: hidden; }
-
 .rp-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  display: flex;
+  flex-direction: column;
   gap: 1px;
   background: var(--border);
 }
@@ -1113,6 +1112,7 @@ body {
 
   /* ---- Team view ---- */
   .team-view { grid-template-columns: 1fr; gap: 16px; }
+  .rp-panel { position: static; max-height: none; overflow-y: visible; }
   .team-view-hero { padding: 16px; gap: 14px; }
   .team-view-logo { width: 56px; height: 56px; }
   .team-view-name { font-size: 1.2rem; }
