@@ -1035,6 +1035,8 @@ function closeMatchupModal() {
 }
 
 // ── Player Profile Modal ──────────────────────────────────────────────────────
+const WEB_BASE = 'https://site.web.api.espn.com/apis/common/v3/sports';
+
 async function openPlayerModal(athleteId, teamId) {
   const team = TEAMS.find(t => t.id === teamId);
   if (!team) return;
@@ -1047,20 +1049,15 @@ async function openPlayerModal(athleteId, teamId) {
   overlay.classList.add('open');
   document.body.style.overflow = 'hidden';
 
-  const [athRes, gamelogRes, statsRes, newsRes] = await Promise.allSettled([
-    apiFetch(`${BASE}/${team.sport}/${team.league}/athletes/${athleteId}`),
-    apiFetch(`${BASE}/${team.sport}/${team.league}/athletes/${athleteId}/gamelog`),
-    apiFetch(`${BASE}/${team.sport}/${team.league}/athletes/${athleteId}/statistics`),
-    apiFetch(`${BASE}/${team.sport}/${team.league}/news?athlete=${athleteId}&limit=5`),
-  ]);
+  // Athlete bio comes from already-loaded roster data — no extra fetch needed
+  const ath = (allData[teamId]?.roster || []).find(a => String(a.id) === String(athleteId)) || {};
 
-  body.innerHTML = renderPlayerContent(
-    athRes.value,
-    gamelogRes.value,
-    statsRes.value,
-    newsRes.value,
-    team
-  );
+  try {
+    const overview = await apiFetch(`${WEB_BASE}/${team.sport}/${team.league}/athletes/${athleteId}/overview`);
+    body.innerHTML = renderPlayerContent(ath, overview, team);
+  } catch (err) {
+    body.innerHTML = '<div class="mu-loading">Could not load player data.</div>';
+  }
 }
 
 function closePlayerModal() {
@@ -1069,8 +1066,7 @@ function closePlayerModal() {
   document.body.style.overflow = '';
 }
 
-function renderPlayerContent(athData, gamelogData, statsData, newsData, team) {
-  const ath     = athData?.athlete || athData?.athletes?.[0] || {};
+function renderPlayerContent(ath, overview, team) {
   const name    = ath.displayName || ath.fullName || 'Unknown';
   const photo   = ath.headshot?.href || '';
   const pos     = ath.position?.displayName || ath.position?.abbreviation || '';
@@ -1081,7 +1077,7 @@ function renderPlayerContent(athData, gamelogData, statsData, newsData, team) {
   const expStr  = exp != null ? (exp === 0 ? 'Rookie' : `${exp} yr${exp !== 1 ? 's' : ''}`) : '';
   const college = ath.college?.name || '';
 
-  // ── Header ──────────────────────────────────────────────────────────────────
+  // ── Header ───────────────────────────────────────────────────────────────────
   const headerHtml = `
     <div class="pm-hero" style="${team.bg ? `background:${team.bg}` : `background:var(--surface2)`}">
       <div class="pm-hero-inner">
@@ -1098,77 +1094,83 @@ function renderPlayerContent(athData, gamelogData, statsData, newsData, team) {
       </div>
     </div>`;
 
-  // ── Parse gamelog ────────────────────────────────────────────────────────────
-  const seasonTypes  = gamelogData?.seasonTypes || [];
-  const eventsMap    = gamelogData?.events || {};
-  const regSeason    = seasonTypes.find(s => s.id === 2 || s.abbreviation === 'reg') || seasonTypes[0];
-  const mainCat      = regSeason?.categories?.[0] || null;
-  const labels       = mainCat?.labels || [];
-  const preferred    = KEY_STATS[team.sport] || labels.slice(0, 6);
-  const cols         = Array.isArray(preferred) ? preferred.filter(c => labels.includes(c)) : labels.slice(0, 6);
+  // ── Season & Career from overview.statistics ──────────────────────────────────
+  // Structure: { labels:[], splits:[{displayName:'Regular Season',stats:[]},{displayName:'Career',stats:[]}] }
+  const statsBlock  = overview?.statistics || {};
+  const statLabels  = statsBlock.labels || [];
+  const statSplits  = statsBlock.splits || [];
+  const preferred   = KEY_STATS[team.sport];
+  // Use preferred keys if they exist in labels, otherwise fall back to all labels
+  const cols = (() => {
+    if (Array.isArray(preferred)) {
+      const filtered = preferred.filter(c => statLabels.includes(c));
+      return filtered.length ? filtered : statLabels.slice(0, 7);
+    }
+    return statLabels.slice(0, 7);
+  })();
 
-  // ── Season averages ──────────────────────────────────────────────────────────
-  let seasonHtml = '';
-  const avgArr = mainCat?.averages || mainCat?.totals || mainCat?.seasonTotals || [];
-  if (avgArr.length && cols.length) {
-    const chips = cols.map(col => {
-      const idx = labels.indexOf(col);
-      const val = idx >= 0 ? avgArr[idx] : null;
+  function makeStatChips(statsArr) {
+    return cols.map(col => {
+      const idx = statLabels.indexOf(col);
+      const val = idx >= 0 ? statsArr[idx] : null;
       if (!val || val === '--' || val === '0' || val === '0.0') return '';
       return `<div class="pm-stat-chip"><div class="pm-stat-val">${escHtml(String(val))}</div><div class="pm-stat-lbl">${col}</div></div>`;
     }).filter(Boolean);
-    if (chips.length) {
-      seasonHtml = `
-        <div class="pm-section">
-          <div class="pm-section-title" style="color:${team.color}">Season Averages</div>
-          <div class="pm-stat-chips">${chips.join('')}</div>
-        </div>`;
-    }
   }
 
-  // ── Career averages (from statistics endpoint) ───────────────────────────────
+  let seasonHtml = '';
+  const regSplit = statSplits.find(s => /regular/i.test(s.displayName || '')) || statSplits[0];
+  if (regSplit?.stats?.length) {
+    const chips = makeStatChips(regSplit.stats);
+    if (chips.length) seasonHtml = `
+      <div class="pm-section">
+        <div class="pm-section-title" style="color:${team.color}">Season Averages</div>
+        <div class="pm-stat-chips">${chips.join('')}</div>
+      </div>`;
+  }
+
   let careerHtml = '';
-  const careerCats = statsData?.splits?.categories || statsData?.athlete?.statistics || [];
-  if (careerCats.length) {
-    const careerCat = careerCats.find(c => c.name === 'general' || c.displayName?.toLowerCase().includes('general')) || careerCats[0];
-    const cLabels = careerCat?.labels || careerCat?.names || [];
-    const cStats  = careerCat?.stats || careerCat?.totals || [];
-    if (cStats.length) {
-      const cCols = Array.isArray(preferred) ? preferred.filter(c => cLabels.includes(c)) : cLabels.slice(0, 6);
-      const chips = cCols.map(col => {
-        const idx = cLabels.indexOf(col);
-        const val = idx >= 0 ? cStats[idx] : null;
-        if (!val || val === '--' || val === '0' || val === '0.0') return '';
-        return `<div class="pm-stat-chip"><div class="pm-stat-val">${escHtml(String(val))}</div><div class="pm-stat-lbl">${col}</div></div>`;
-      }).filter(Boolean);
-      if (chips.length) {
-        careerHtml = `
-          <div class="pm-section">
-            <div class="pm-section-title" style="color:${team.color}">Career Averages</div>
-            <div class="pm-stat-chips">${chips.join('')}</div>
-          </div>`;
-      }
-    }
+  const careerSplit = statSplits.find(s => /career/i.test(s.displayName || ''));
+  if (careerSplit?.stats?.length) {
+    const chips = makeStatChips(careerSplit.stats);
+    if (chips.length) careerHtml = `
+      <div class="pm-section">
+        <div class="pm-section-title" style="color:${team.color}">Career Averages</div>
+        <div class="pm-stat-chips">${chips.join('')}</div>
+      </div>`;
   }
 
-  // ── Last 5 games ─────────────────────────────────────────────────────────────
+  // ── Last 5 games from overview.gameLog ────────────────────────────────────────
+  // Structure: { statistics:[{labels:[], events:[{eventId,stats:[]}]}], events:{id:{atVs,gameDate,score,gameResult,opponent}} }
   let gamesHtml = '';
-  const gameEvents = mainCat?.events || [];
-  const last5 = gameEvents.slice(-5).reverse();
-  if (last5.length && cols.length) {
-    const headerCells = cols.map(c => `<th>${c}</th>`).join('');
+  const gameLog     = overview?.gameLog || {};
+  const glStatBlock = (gameLog.statistics || [])[0] || {};
+  const glLabels    = glStatBlock.labels || [];
+  const glEvents    = glStatBlock.events || [];
+  const eventsMap   = gameLog.events || {};
+  const glCols = (() => {
+    if (Array.isArray(preferred)) {
+      const filtered = preferred.filter(c => glLabels.includes(c));
+      return filtered.length ? filtered : glLabels.slice(0, 6);
+    }
+    return glLabels.slice(0, 6);
+  })();
+
+  if (glEvents.length && glCols.length) {
+    const last5 = glEvents.slice(-5).reverse();
+    const headerCells = glCols.map(c => `<th>${c}</th>`).join('');
     const rows = last5.map(ev => {
-      const info    = eventsMap[ev.eventId] || {};
-      const opp     = info.opponent?.abbreviation || info.opponent?.displayName || '—';
-      const atVs    = info.homeAway === 'home' ? 'vs' : '@';
-      const result  = info.result || '';
+      const info    = eventsMap[String(ev.eventId)] || {};
+      const opp     = info.opponent?.abbreviation || '—';
+      const atVs    = info.atVs || '';
+      const result  = info.gameResult || '';
       const score   = info.score || '';
       const dateStr = info.gameDate
         ? new Date(info.gameDate).toLocaleDateString('en-US', { month: 'numeric', day: 'numeric' })
         : '';
       const resCls  = result === 'W' ? 'win' : result === 'L' ? 'loss' : '';
-      const statCells = cols.map(col => {
-        const idx = labels.indexOf(col);
+      const statCells = glCols.map(col => {
+        const idx = glLabels.indexOf(col);
         const val = idx >= 0 ? (ev.stats?.[idx] ?? '—') : '—';
         return `<td>${escHtml(String(val))}</td>`;
       }).join('');
@@ -1192,9 +1194,9 @@ function renderPlayerContent(athData, gamelogData, statsData, newsData, team) {
       </div>`;
   }
 
-  // ── News ─────────────────────────────────────────────────────────────────────
+  // ── News from overview.news (direct array) ────────────────────────────────────
   let newsHtml = '';
-  const articles = newsData?.articles || newsData?.news || [];
+  const articles = Array.isArray(overview?.news) ? overview.news : (overview?.news?.articles || []);
   if (articles.length) {
     const items = articles.slice(0, 5).map(a => {
       const hl   = a.headline || a.title || '';
@@ -1202,7 +1204,7 @@ function renderPlayerContent(athData, gamelogData, statsData, newsData, team) {
       const pub  = a.published
         ? new Date(a.published).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
         : '';
-      const img  = a.images?.[0]?.url || a.image?.url || '';
+      const img  = a.images?.[0]?.url || '';
       return `
         <div class="pm-news-item">
           ${img ? `<img class="pm-news-img" src="${escHtml(img)}" alt="" onerror="this.style.display='none'">` : ''}
