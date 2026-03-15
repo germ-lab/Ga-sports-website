@@ -974,8 +974,11 @@ async function openMatchupModal(gameId, teamId) {
   document.body.style.overflow = 'hidden';
 
   try {
-    const summary = await apiFetch(`${BASE}/${team.sport}/${team.league}/summary?event=${gameId}`);
-    body.innerHTML = renderMatchupContent(summary, game, team, data.oddsMap || {});
+    const [summary, kalshi] = await Promise.all([
+      apiFetch(`${BASE}/${team.sport}/${team.league}/summary?event=${gameId}`),
+      fetchKalshiOdds(game, team),
+    ]);
+    body.innerHTML = renderMatchupContent(summary, game, team, data.oddsMap || {}, kalshi);
   } catch {
     body.innerHTML = '<div class="mu-loading">Could not load matchup data.</div>';
   }
@@ -985,6 +988,56 @@ function closeMatchupModal() {
   document.getElementById('matchupModal').classList.remove('open');
   document.getElementById('matchupOverlay').classList.remove('open');
   document.body.style.overflow = '';
+}
+
+// ── Kalshi Prediction Market Odds ─────────────────────────────────────────────
+const KALSHI_BASE = 'https://api.elections.kalshi.com/trade-api/v2';
+
+// Map ESPN abbreviations → Kalshi abbreviations where they differ
+const ESPN_TO_KALSHI_ABBR = {
+  'GS': 'GSW', 'SA': 'SAS', 'NO': 'NOP', 'NY': 'NYK',
+  'UTAH': 'UTA', 'NE': 'NE', 'TB': 'TB',
+  // NHL common differences
+  'SJS': 'SJS', 'VGK': 'VGK',
+};
+const SPORT_TO_KALSHI_SERIES = {
+  'nba': 'KXNBAGAME',
+  'mlb': 'KXMLBGAME',
+  'nhl': 'KXNHLGAME',
+};
+function toKalshiAbbr(espn) {
+  const up = (espn || '').toUpperCase();
+  return ESPN_TO_KALSHI_ABBR[up] || up;
+}
+async function fetchKalshiOdds(game, team) {
+  const series = SPORT_TO_KALSHI_SERIES[team.league];
+  if (!series || game.state !== 'pre') return null;
+  try {
+    const d = game.date;
+    const yy  = String(d.getFullYear()).slice(-2);
+    const mon = d.toLocaleDateString('en-US', { month: 'short' }).toUpperCase();
+    const dd  = String(d.getDate()).padStart(2, '0');
+    const awayK = toKalshiAbbr(game.away.abbrev);
+    const homeK = toKalshiAbbr(game.home.abbrev);
+    const ourK  = toKalshiAbbr(game.isHome ? game.home.abbrev : game.away.abbrev);
+    const ticker = `${series}-${yy}${mon}${dd}${awayK}${homeK}-${ourK}`;
+    const res = await fetch(`${KALSHI_BASE}/markets/${ticker}`);
+    if (!res.ok) return null;
+    const json = await res.json();
+    const m = json.market || {};
+    const last = m.last_price_dollars;
+    const mid  = (m.yes_bid_dollars != null && m.yes_ask_dollars != null)
+      ? (m.yes_bid_dollars + m.yes_ask_dollars) / 2 : null;
+    const prob = last ?? mid;
+    if (prob == null) return null;
+    return {
+      ourPct:  Math.round(prob * 100),
+      oppPct:  Math.round((1 - prob) * 100),
+      yesBid:  m.yes_bid_dollars,
+      yesAsk:  m.yes_ask_dollars,
+      ticker,
+    };
+  } catch { return null; }
 }
 
 // ── Player Profile Modal ──────────────────────────────────────────────────────
@@ -1156,7 +1209,7 @@ function renderPlayerContent(ath, overview, team) {
     ${noContent ? '<div class="mu-loading">No stats available for this player.</div>' : ''}`;
 }
 
-function renderMatchupContent(summary, game, team, oddsMap) {
+function renderMatchupContent(summary, game, team, oddsMap, kalshi) {
   const comps = summary.header?.competitions?.[0]?.competitors || [];
   const awayComp = comps.find(c => c.homeAway === 'away') || comps[0] || {};
   const homeComp = comps.find(c => c.homeAway === 'home') || comps[1] || {};
@@ -1224,6 +1277,31 @@ function renderMatchupContent(summary, game, team, oddsMap) {
       <div class="mu-odds">
         <div class="mu-odds-src">DraftKings</div>
         <div class="mu-odds-chips">${chips.join('')}</div>
+      </div>`;
+  }
+
+  // Kalshi prediction market odds (upcoming games only)
+  let kalshiHtml = '';
+  if (kalshi && game.state === 'pre') {
+    const awayPct = game.isHome ? kalshi.oppPct : kalshi.ourPct;
+    const homePct = game.isHome ? kalshi.ourPct : kalshi.oppPct;
+    const awayColor = game.isHome ? '#555' : team.color;
+    const homeColor = game.isHome ? team.color : '#555';
+    kalshiHtml = `
+      <div class="mu-kalshi">
+        <div class="mu-kalshi-header">
+          <span class="mu-kalshi-src">Kalshi</span>
+          <span class="mu-kalshi-label">Prediction Market</span>
+        </div>
+        <div class="mu-winprob-labels">
+          <span style="color:${awayColor};font-weight:700">${awayPct}%</span>
+          <span class="mu-winprob-title">Win Probability</span>
+          <span style="color:${homeColor};font-weight:700">${homePct}%</span>
+        </div>
+        <div class="mu-winprob-bar" style="margin-top:6px">
+          <div class="mu-winprob-away" style="width:${awayPct}%;background:${awayColor}"></div>
+          <div class="mu-winprob-home" style="width:${homePct}%;background:${homeColor}"></div>
+        </div>
       </div>`;
   }
 
@@ -1343,6 +1421,7 @@ function renderMatchupContent(summary, game, team, oddsMap) {
     </div>
     ${winProbHtml}
     ${oddsHtml}
+    ${kalshiHtml}
     ${leadersHtml}
     ${boxScoreHtml}
     ${venueHtml}

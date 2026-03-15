@@ -1595,6 +1595,35 @@ body {
   margin-top: 2px;
 }
 
+/* Kalshi prediction market */
+.mu-kalshi {
+  padding: 12px 20px;
+  border-top: 1px solid var(--border);
+}
+.mu-kalshi-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.mu-kalshi-src {
+  font-size: .6rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  background: #00a86b;
+  color: #fff;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+.mu-kalshi-label {
+  font-size: .6rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--text-muted);
+}
+
 /* Section */
 .mu-section {
   padding: 12px 20px;
