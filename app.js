@@ -657,7 +657,6 @@ function renderRosterPanel(team, data) {
     <div class="panel-box rp-panel">
       <div class="panel-box-header" style="color:${team.color}">
         Roster & Stats
-        ${gameLabel ? `<span class="rp-game-label">${escHtml(gameLabel)}</span>` : ''}
       </div>
       <div class="rp-grid">${cards}</div>
     </div>`;
@@ -878,7 +877,7 @@ function renderScheduleCalendar(team, games, oddsMap) {
   ];
 
   const days = getWeekDays(schedWeekOffset);
-  const weekLabel = `${fmtDate(days[0])} – ${fmtDate(days[6])}`;
+  const weekLabel = days[0].toLocaleDateString('en-US', { month: 'long' });
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
